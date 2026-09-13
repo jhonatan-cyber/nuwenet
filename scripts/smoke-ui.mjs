@@ -1,4 +1,4 @@
-import { createTestDatabase } from '../test/postgres-fixture.js';
+import { createTestSchema } from '../test/postgres-fixture.js';
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -8,7 +8,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nuwenet-ui-'));
-const pg = await createTestDatabase();
+const pg = await createTestSchema();
 const port = 43000 + Math.floor(Math.random() * 10000);
 const setupToken = 'ui-installation-fixture';
 // Preserve OS/runtime paths, never application credentials or local .env settings.

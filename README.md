@@ -20,7 +20,7 @@ El archivo de dependencias es `bun.lock`. NestJS se compila con TypeScript para 
 
 ## Desarrollo
 
-Copia `.env.example` como `.env` si todavía no existe. Configura la conexión PostgreSQL y `ROUTER_ENCRYPTION_KEY` antes de iniciar.
+Crea un único archivo `.env` en la raíz del proyecto si todavía no existe. Configura la conexión PostgreSQL y `ROUTER_ENCRYPTION_KEY` antes de iniciar.
 
 ```sh
 bun run dev
@@ -39,7 +39,7 @@ Abre http://127.0.0.1:3000. NestJS sirve la API y el frontend compilado por Astr
 
 ## PostgreSQL
 
-Copia `.env.example` como `.env` y configura la conexión. `.env.postgres.example` queda como plantilla alternativa. Si ya existe un archivo local con tus credenciales, consérvalo. Los archivos `.env` y `.env.postgres` están excluidos del repositorio; los ejemplos no contienen contraseñas reales.
+Toda la configuración reside en `.env`, excluido de Git por contener secretos. Configura la conexión a la base existente `nuwenet`; la aplicación y las pruebas usan esa misma base.
 
 ```dotenv
 DB_DRIVER=postgres
@@ -49,17 +49,22 @@ PGDATABASE=nuwenet
 PGUSER=postgres
 PGPASSWORD=tu_contraseña
 PGSSLMODE=disable
+HOST=127.0.0.1
+PORT=3000
+ROUTER_ENCRYPTION_KEY=clave_aleatoria_de_32_bytes_en_base64
+SETUP_TOKEN=codigo_privado_de_instalacion
+NOTIFY_CHANNEL=log
+WHATSAPP_SEND_ENABLED=false
 ```
 
-Prepara la base si no existe y ejecuta el sistema:
+Prepara `nuwenet` desde la administración de PostgreSQL y ejecuta el sistema:
 
 ```sh
-bun run db:postgres:create
 bun run build
 bun run start
 ```
 
-`db:postgres:create` conecta a la base de mantenimiento `postgres` mediante las variables `PG*`; requiere permiso para crear bases y no modifica una base existente. Las tablas y el registro de migraciones se crean al iniciar NestJS.
+La aplicación crea las tablas y aplica las migraciones en `nuwenet`. Ningún comando de la aplicación ni de pruebas crea o elimina bases de datos.
 
 Para desarrollar con PostgreSQL:
 
@@ -67,7 +72,6 @@ Para desarrollar con PostgreSQL:
 bun run dev
 ```
 
-El sistema requiere PostgreSQL. Los archivos SQLite antiguos no se leen ni se migran automáticamente.
 
 En un alojamiento web configura sus variables de entorno: `DB_DRIVER=postgres`, la conexión PostgreSQL y `HOST=0.0.0.0` si la plataforma lo requiere. `DATABASE_URL` también se admite y tiene prioridad sobre las variables `PG*`; en ese caso el SSL debe ir en la URL, por ejemplo `?sslmode=verify-full`. Con variables separadas utiliza `PGSSLMODE` según el proveedor. La configuración local no publica automáticamente la aplicación en internet.
 
@@ -77,7 +81,8 @@ En un alojamiento web configura sus variables de entorno: `DB_DRIVER=postgres`, 
 | --- | --- | --- |
 | `DB_DRIVER` | `postgres` | Único motor admitido |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `5432` | Servidor PostgreSQL |
-| `PGDATABASE` | `nuwenet` | Base PostgreSQL |
+| `PGDATABASE` | `nuwenet` | Única base admitida |
+| `PGSCHEMA` | `public` | Esquema de la aplicación; las pruebas generan su propio esquema |
 | `PGUSER` | `postgres` | Usuario PostgreSQL |
 | `PGPASSWORD` | Sin valor | Contraseña privada del backend |
 | `PGSSLMODE` | `disable` | SSL de PostgreSQL con variables separadas |
@@ -97,7 +102,7 @@ No uses variables `PUBLIC_*` para credenciales: Astro puede incluirlas en el nav
 - `apps/api/src/management`: controladores, DTOs y reglas de planes, departamentos, cobros y acceso.
 - `apps/web/src`: páginas, componentes, layout, estilos e interacción del panel Astro.
 - `test`: integración PostgreSQL.
-- `scripts`: preparación PostgreSQL y prueba del navegador.
+- `scripts`: diagnóstico, recuperación de respaldos y prueba del navegador.
 
 Las consultas de negocio se parametrizan con Bun SQL. PostgreSQL utiliza un bloqueo transaccional compartido entre instancias para evitar duplicar pagos y decisiones de acceso simultáneas. Las migraciones posteriores deben añadirse como nuevas versiones.
 
@@ -111,7 +116,7 @@ bun run test
 bun run test:postgres
 ```
 
-Las pruebas verifican registros, validaciones, mensualidades sin duplicados, pagos concurrentes, suspensión, reactivación y persistencia. La prueba PostgreSQL crea una base temporal `nuwenet_test_*`, conecta dos instancias de NestJS y elimina únicamente esa base al terminar. Requiere permiso de creación de bases; no carga datos de prueba en `nuwenet`.
+Las pruebas verifican registros, validaciones, cobros concurrentes y persistencia dentro de `nuwenet`. Cada escenario crea un esquema `nuwenet_test_*` y elimina solo ese esquema al terminar. Las tablas operativas permanecen en `public`. Se necesita permiso `CREATE` sobre `nuwenet` para crear esquemas, sin permisos de creación de bases.
 
 Para validar la interfaz:
 
@@ -126,9 +131,9 @@ Para ejecutar tipos, compilación, suite e interfaz en secuencia, sin compilar d
 bun run verify
 ```
 
-La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a una base PostgreSQL temporal. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend y no habilita WhatsApp. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su base temporal.
+La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a un esquema temporal dentro de `nuwenet`. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend y no habilita WhatsApp. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su esquema temporal.
 
-También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La prueba del navegador siempre utiliza una base PostgreSQL temporal.
+También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La prueba del navegador siempre utiliza un esquema temporal dentro de `nuwenet`.
 
 ## Funciones y alcance
 
@@ -152,4 +157,4 @@ Configura `.env` con PostgreSQL, `ROUTER_ENCRYPTION_KEY` (32 bytes aleatorios en
 
 La VPS necesita conectividad hacia los routers de cada edificio mediante una red privada o VPN. Las direcciones privadas de los routers requieren esa conexión desde la VPS.
 
-Las pruebas requieren una instancia PostgreSQL de pruebas con permiso `CREATEDB`, además de `pg_dump` y `pg_restore`. Cada escenario crea y elimina exclusivamente su propia base `nuwenet_test_*`; no usa los datos de la aplicación. Para usar el archivo alternativo: `bun --env-file=.env.postgres run verify`.
+Las pruebas utilizan la conexión del único `.env` y requieren `pg_dump` y `pg_restore`. `bun run verify` comprueba tipos, compilación, pruebas de API y navegador. Los ensayos de restauración usan exclusivamente el esquema del escenario de prueba dentro de `nuwenet`.

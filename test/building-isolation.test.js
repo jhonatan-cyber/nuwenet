@@ -1,4 +1,4 @@
-import { createTestDatabase } from './postgres-fixture.js';
+import { createTestSchema } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -10,7 +10,7 @@ import { chromium } from 'playwright';
 
 test('edificios: acceso aislado, actividad privada y formularios en el edificio seleccionado', async () => {
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-isolation-'));
-  const pg = await createTestDatabase();
+  const pg = await createTestSchema();
   const port=44000+Math.floor(Math.random()*5000), origin=`http://127.0.0.1:${port}`;
   const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,SETUP_TOKEN:'',DB_DRIVER:'postgres',HOST:'127.0.0.1',PORT:String(port),DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups')},stdio:['ignore','pipe','pipe'],windowsHide:true});
   let cookie='', browser;

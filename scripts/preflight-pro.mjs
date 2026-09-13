@@ -1,4 +1,4 @@
-import { SQL } from 'bun';
+import { connectPostgres } from '../apps/api/dist/database/postgres-config.js';
 import {existsSync,readFileSync} from 'node:fs';
 import {networkInterfaces} from 'node:os';
 import path from 'node:path';
@@ -29,7 +29,7 @@ const report={
 let db;
 try {
   if (report.config.database !== 'postgres') throw new Error('Motor no soportado');
-  db = env.DATABASE_URL ? new SQL(env.DATABASE_URL) : new SQL({adapter:'postgres',hostname:env.PGHOST||'127.0.0.1',port:Number(env.PGPORT||5432),database:env.PGDATABASE||'nuwenet',username:env.PGUSER||'postgres',password:env.PGPASSWORD,ssl:env.PGSSLMODE||'disable',connectionTimeout:10});
+  db = connectPostgres(env);
   await db.begin('ISOLATION LEVEL REPEATABLE READ READ ONLY', async tx => {
     const has=async name=>Boolean((await tx`SELECT to_regclass(${name}) present`)[0].present);
       if(await has('schema_migrations')){

@@ -1,4 +1,4 @@
-import { createTestDatabase } from './postgres-fixture.js';
+import { createTestSchema } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -9,7 +9,7 @@ import { once } from 'node:events';
 
 test('auth, abonos parciales, moneda y modo mixto', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'nuwenet-auth-'));
-  const pg = await createTestDatabase();
+  const pg = await createTestSchema();
   const port = 35000 + Math.floor(Math.random() * 5000);
   let child;
   let jar = '';

@@ -12,8 +12,6 @@
     "build": "bun run --cwd apps/api build && bun run --cwd apps/web build",
     "check": "bun run --cwd apps/api check && bun run --cwd apps/web check",
     "start": "bun apps/api/dist/main.js",
-    "start:postgres": "bun --env-file=.env.postgres apps/api/dist/main.js",
-    "db:postgres:create": "bun scripts/create-postgres.mjs",
     "test": "bun run build && bun test ./test",
     "test:postgres": "bun run build && bun test ./test/postgres.test.js",
     "test:ui": "bun run build && bun scripts/smoke-ui.mjs",

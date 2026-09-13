@@ -1,4 +1,4 @@
-import { createTestDatabase } from './postgres-fixture.js';
+import { createTestSchema } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync} from 'node:fs';
@@ -16,7 +16,7 @@ const owner={id:1,role:'superadmin',username:'owner'};
 const sample=(down,up,id='*A',name='nuwenet-department-1')=>({id,name,target:'192.168.1.10/32',downloadBytes:down,uploadBytes:up,downloadRate:0,uploadRate:0});
 async function fixture(run){
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-usage-'));
-  const pg = await createTestDatabase();
+  const pg = await createTestSchema();
   const before={DB_DRIVER:process.env.DB_DRIVER,DATA_DIR:process.env.DATA_DIR};
   process.env.DB_DRIVER='postgres';process.env.DATA_DIR=directory;
   let db=new DatabaseService();

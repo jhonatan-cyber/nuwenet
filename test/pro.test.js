@@ -1,4 +1,4 @@
-import { createTestDatabase } from './postgres-fixture.js';
+import { createTestSchema } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync} from 'node:fs';
@@ -13,7 +13,7 @@ import {runAsSystem} from '../apps/api/dist/common/request-context.js';
 
 test('Pro: tokens, aislamiento, transferencias atómicas, recibos firmados y WhatsApp sin bloqueo',async()=>{
   const dir=mkdtempSync(path.join(tmpdir(),'nuwenet-pro-'));
-  const pg = await createTestDatabase();
+  const pg = await createTestSchema();
   const keys=['DB_DRIVER','DATA_DIR','NOTIFY_CHANNEL'],before=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
   Object.assign(process.env,{DB_DRIVER:'postgres',DATA_DIR:dir,NOTIFY_CHANNEL:'log'});
   let db;

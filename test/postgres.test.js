@@ -1,30 +1,18 @@
 import { test } from 'bun:test';
-import { SQL } from 'bun';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { randomUUID } from 'node:crypto';
+import { createTestSchema } from './postgres-fixture.js';
 import { routerContract } from './router-contract';
 
 test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', async () => {
-  const database = `nuwenet_test_${randomUUID().replaceAll('-', '')}`;
-  const options = {
-    adapter: 'postgres', hostname: process.env.PGHOST || '127.0.0.1',
-    port: Number(process.env.PGPORT || 5432), username: process.env.PGUSER || 'postgres',
-    password: process.env.PGPASSWORD, ssl: process.env.PGSSLMODE || 'disable', connectionTimeout: 10,
-  };
-  const adminUrl = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
-  if (adminUrl) adminUrl.pathname = '/postgres';
-  const admin = adminUrl ? new SQL(adminUrl.toString()) : new SQL({ ...options, database: 'postgres' });
-  let created = false;
+  const pg = await createTestSchema();
   const children = [];
   let cookie='';
   const port = 34000 + Math.floor(Math.random() * 5000);
-  const testUrl = adminUrl ? new URL(adminUrl) : null;
-  if (testUrl) testUrl.pathname = `/${database}`;
   async function start(listenPort) {
     const child = spawn(process.execPath, ['apps/api/dist/main.js'], {
-      env: { ...process.env, SETUP_TOKEN: '', DB_DRIVER: 'postgres', PGDATABASE: database, DATABASE_URL: testUrl?.toString() || '', HOST: '127.0.0.1', PORT: String(listenPort), NOTIFY_CHANNEL:'log', WHATSAPP_SEND_ENABLED:'false', NUWENET_PORTAL_IP:'', NUWENET_PUBLIC_URL:'', OVERDUE_CRON_MINUTES:'0' },
+      env: { ...process.env, SETUP_TOKEN: '', DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(listenPort), NOTIFY_CHANNEL:'log', WHATSAPP_SEND_ENABLED:'false', NUWENET_PORTAL_IP:'', NUWENET_PUBLIC_URL:'', OVERDUE_CRON_MINUTES:'0' },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -50,9 +38,6 @@ test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', asy
     return result;
   }
   try {
-    // Never run a destructive test against the application's configured database.
-    await admin.unsafe(`CREATE DATABASE "${database}"`);
-    created = true;
     const first = await start(port);
     const second = await start(port + 1);
     await request('auth/setup',{username:'admin',password:'fixture-password'});
@@ -91,10 +76,6 @@ test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', asy
     await routerContract(request);
   } finally {
     for (const child of children) await stop(child);
-    if (created) {
-      if (!/^nuwenet_test_[a-f0-9]{32}$/.test(database)) throw new Error('Nombre de base temporal inesperado.');
-      await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);
-    }
-    await admin.close();
+    await pg.close();
   }
 }, 60000);

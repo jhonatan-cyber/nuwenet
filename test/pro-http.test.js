@@ -1,4 +1,4 @@
-import { createTestDatabase } from './postgres-fixture.js';
+import { createTestSchema } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -13,7 +13,7 @@ test('Pro HTTP y navegador: portal público aislado, WhatsApp, QR, aprobación y
   const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');
   const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-pro-http-')),origin=`http://127.0.0.1:${port}`;
-  const pg = await createTestDatabase();
+  const pg = await createTestSchema();
   const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,DB_DRIVER:'postgres',DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups'),HOST:'127.0.0.1',PORT:String(port),SETUP_TOKEN:'',NOTIFY_CHANNEL:'log',WHATSAPP_SEND_ENABLED:'false',NUWENET_PORTAL_IP:'',NUWENET_PUBLIC_URL:''},stdio:['ignore','pipe','pipe'],windowsHide:true});
   let cookie='',browser;
   const api=async(route,body,status=200,authenticated=true)=>{

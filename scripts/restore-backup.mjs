@@ -10,7 +10,7 @@ const manifest = await verifyBackup(source);
 if (existsSync(destination)) throw new Error('El destino debe ser un directorio nuevo para conservar la base actual.');
 if (destination === source || destination.startsWith(source + path.sep)) throw new Error('El destino debe estar fuera del respaldo.');
 mkdirSync(destination, { recursive: true });
-// D5: PostgreSQL se restaura sobre una base NUEVA con pg_restore; este script
+// La recuperación se ejecuta sobre el esquema seleccionado en nuwenet; este script
 // verifica el paquete y deja el volcado listo sin tocar la base en uso.
 for (const name of Object.keys(manifest.files)) {
   if (manifest.encrypted) await decryptFile(backupKey(), path.join(source, `${name}.enc`), path.join(destination, name));
@@ -22,4 +22,4 @@ const plain = JSON.parse(readFileSync(path.join(source, 'manifest.json'), 'utf8'
 plain.encrypted = false; delete plain.package;
 writeFileSync(path.join(destination, 'manifest.json'), JSON.stringify(plain, null, 2));
 await verifyBackup(destination);
-console.log(`Paquete verificado en ${destination}. Restaura nuwenet.dump con pg_restore --dbname <base_nueva> y configura ROUTER_ENCRYPTION_KEY con router.key.`);
+console.log(`Paquete verificado en ${destination}. Restaura nuwenet.dump con pg_restore --dbname nuwenet --schema <esquema_del_manifiesto> y configura ROUTER_ENCRYPTION_KEY con router.key.`);

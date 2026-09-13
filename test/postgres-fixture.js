@@ -1,34 +1,31 @@
-import { SQL } from 'bun';
 import { randomUUID, randomBytes } from 'node:crypto';
+import { connectPostgres } from '../apps/api/dist/database/postgres-config.js';
 
-// Each fixture owns a newly created database; never reset the configured application database.
-export async function createTestDatabase() {
-  const name = `nuwenet_test_${randomUUID().replaceAll('-', '')}`;
-  const options = {
-    adapter: 'postgres', hostname: process.env.PGHOST || '127.0.0.1',
-    port: Number(process.env.PGPORT || 5432), username: process.env.PGUSER || 'postgres',
-    password: process.env.PGPASSWORD, ssl: process.env.PGSSLMODE || 'disable', connectionTimeout: 10,
-  };
-  const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
-  if (url) url.pathname = '/postgres';
-  const admin = url ? new SQL(url.toString()) : new SQL({ ...options, database: 'postgres' });
-  try { await admin.unsafe(`CREATE DATABASE "${name}"`); }
-  catch (error) { await admin.close(); throw error; }
-  if (url) url.pathname = `/${name}`;
-  const env = { DB_DRIVER: 'postgres', PGDATABASE: name, DATABASE_URL: url?.toString() || '', ROUTER_ENCRYPTION_KEY: randomBytes(32).toString('base64') };
-  for (const key of ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGSSLMODE', 'PG_DUMP_PATH', 'PG_RESTORE_PATH']) {
+// Each fixture owns only a temporary schema inside nuwenet.
+export async function createTestSchema() {
+  const schema = `nuwenet_test_${randomUUID().replaceAll('-', '')}`;
+  const env = { DB_DRIVER: 'postgres', PGDATABASE: 'nuwenet', PGSCHEMA: schema, ROUTER_ENCRYPTION_KEY: randomBytes(32).toString('base64') };
+  for (const key of ['DATABASE_URL', 'PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGSSLMODE', 'PG_DUMP_PATH', 'PG_RESTORE_PATH']) {
     if (process.env[key] !== undefined) env[key] = process.env[key];
   }
-  const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
-  Object.assign(process.env, env);
+  if (process.env.PGDATABASE && process.env.PGDATABASE !== 'nuwenet') throw new Error('Las pruebas requieren la base nuwenet.');
+  const admin = connectPostgres(env);
+  try { await admin.unsafe(`CREATE SCHEMA "${schema}"`); }
+  catch (error) { await admin.close(); throw error; }
+  const keys = ['DB_DRIVER', 'PGDATABASE', 'PGSCHEMA', 'ROUTER_ENCRYPTION_KEY'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  for (const key of keys) process.env[key] = env[key];
+  let closed = false;
   return {
-    env,
-    connect: () => url ? new SQL(url.toString()) : new SQL({ ...options, database: name }),
+    env, schema,
+    connect: () => connectPostgres(env),
     async close() {
+      if (closed) return;
       try {
-        if (!/^nuwenet_test_[a-f0-9]{32}$/.test(name)) throw new Error('Base temporal inesperada.');
-        await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);
+        if (!/^nuwenet_test_[a-f0-9]{32}$/.test(schema)) throw new Error('Esquema temporal inesperado.');
+        await admin.unsafe(`DROP SCHEMA "${schema}" CASCADE`);
       } finally {
+        closed = true;
         await admin.close();
         for (const [key, value] of Object.entries(previous)) {
           if (value === undefined) delete process.env[key]; else process.env[key] = value;

@@ -56,7 +56,7 @@ Elegir el tamaño correspondiente en el controlador de impresión y desactivar e
 
 Ejecutar `bun run check` y `bun run test` (incluye `bun run build`). Las pruebas nuevas están en `test/pro.test.js` y `test/pro-http.test.js`. Incluyen persistencia e individualidad de tokens, aislamiento entre departamentos y edificios, reportes concurrentes, rechazo de sobrepagos, firma de recibos, endpoints WhatsApp sin bloqueo de transacciones, tasas y descubrimiento, orden/limpieza de reglas, formulario real en Chromium, generación QR al cambiar el importe y contenido del ticket de 58 mm.
 
-La suite de PostgreSQL depende de una base de pruebas configurada y permanece omitida cuando no está disponible. Las pruebas de esta implementación se ejecutaron con bases SQLite temporales.
+La suite PostgreSQL usa la conexión de `.env` y esquemas temporales dentro de `nuwenet`. Requiere PostgreSQL disponible y permiso para crear esquemas; no crea bases adicionales.
 
 El resultado histórico de la implementación Pro fue de 32 pruebas aprobadas, 1 omitida (PostgreSQL) y 0 fallos. Para los resultados posteriores y tareas realizadas consulta el [registro de implementación](plan-implementacion-mejoras.md). Ninguna prueba con adaptadores simulados acredita cortes físicos ni envíos reales.
 

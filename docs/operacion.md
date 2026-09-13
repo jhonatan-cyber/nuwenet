@@ -93,11 +93,11 @@ bun run build
 BACKUP_ENCRYPTION_KEY=<clave-de-recuperación> bun scripts/restore-backup.mjs backups/snapshot-NOMBRE data-restaurada
 ```
 
-El script rechaza destinos existentes, descifra y verifica el paquete en un directorio nuevo. Después restaura `nuwenet.dump` con `pg_restore --exit-on-error --dbname=BASE_NUEVA archivo.dump`. Configura la conexión a esa base y `ROUTER_ENCRYPTION_KEY` con la clave respaldada antes de iniciar. El script no modifica la base en uso.
+El script rechaza destinos existentes, descifra y verifica el paquete en un directorio nuevo. Conserva el nombre del esquema en el manifiesto. Para una recuperación operativa, detén el servicio y restaura el esquema respaldado en `nuwenet` con `pg_restore --exit-on-error --clean --if-exists --schema=public --dbname=nuwenet archivo.dump`. Esa operación reemplaza los objetos del esquema seleccionado; configura la clave respaldada antes de reiniciar. El script de extracción no modifica la base.
 
 **Objetivos.** Pérdida máxima aceptada: 24 h (ajusta `backup_hours` si necesitas menos); recuperación completa en menos de 2 h. Ensaya la restauración en un directorio nuevo y registra el tiempo real; no declares el procedimiento válido sin un simulacro.
 
-PostgreSQL requiere `pg_dump` y `pg_restore` instalados; puedes indicar sus rutas mediante `PG_DUMP_PATH` y `PG_RESTORE_PATH`. Se crea un archivo custom y se valida su catálogo con `pg_restore --list`. La verificación de PostgreSQL no equivale a una restauración completa: restaura periódicamente en una base nueva con `pg_restore --exit-on-error --dbname=BASE_NUEVA archivo.dump`, verifica allí tus datos y configura la clave respaldada. No uses la base en producción como destino de una prueba.
+PostgreSQL requiere `pg_dump` y `pg_restore`; configura sus rutas en `.env` mediante `PG_DUMP_PATH` y `PG_RESTORE_PATH` si no están en PATH. Cada respaldo incluye únicamente el esquema activo, de modo que las copias operativas no incluyen pruebas. La suite restaura un volcado en su propio esquema temporal de `nuwenet` y comprueba datos y credenciales.
 
 ## API y validación
 
@@ -111,4 +111,4 @@ bun run test
 bun run test:ui
 ```
 
-Las pruebas de confiabilidad cubren alta atómica, pagos con límites mensuales locales, reintentos de abonos, reversión, archivo, gracia, filtros, cola recuperable, separación de destinos y restauración SQLite. Las pruebas de dispositivos usan adaptadores/respuestas simuladas. PostgreSQL tiene una prueba separada que requiere un servidor disponible y permiso de creación de bases temporales.
+Las pruebas de confiabilidad cubren alta atómica, pagos, reversión, archivo, gracia, cola recuperable, separación de destinos y restauración PostgreSQL. Usan esquemas temporales dentro de `nuwenet`, con permiso de creación de esquemas. Las pruebas de dispositivos usan adaptadores y respuestas simuladas.

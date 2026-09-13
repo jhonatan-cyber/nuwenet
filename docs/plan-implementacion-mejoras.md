@@ -43,10 +43,10 @@ Detalle y evidencia de las entregas (cuenta, planes, departamentos y cobros) en 
 - [x] A3. Código de instalación ausente e incorrecto rechazados por HTTP; código válido utilizado desde el navegador. La suite de autenticación conserva y aprueba la instalación local sin código.
 - [x] A4 (local). Añadido `bun run verify`: tipos, compilación, suite e interfaz en secuencia, con una sola compilación.
 - [ ] A4 (remoto). Integración continua pendiente: no hay repositorio Git ni proveedor CI configurados en esta carpeta.
-- [x] A5. Suite PostgreSQL ejecutada con `.env.postgres`: 1 prueba aprobada, 0 fallos. Utiliza una base `nuwenet_test_*`, dos instancias y limpieza al terminar; avisos y portal de corte deshabilitados en los procesos de prueba.
+- [x] A5. Suite PostgreSQL ejecutada con `.env`: 1 prueba aprobada, 0 fallos. Utiliza un esquema `nuwenet_test_*` dentro de `nuwenet`, dos instancias y limpieza al terminar; avisos y portal de corte deshabilitados en los procesos de prueba.
 - [x] A6. README, operación y guía Pro actualizados para WhatsApp, capacidades ARRIS/OpenWrt, consumo persistente y límites de verificación física. Diagnóstico del 11/09 identificado como histórico.
 
-Evidencia: `bun run verify` terminó con código 0: tipos sin errores/advertencias, compilación correcta, 37 pruebas aprobadas y una omitida por motor, más el recorrido UI completo. La prueba omitida fue ejecutada por separado mediante `bun --env-file=.env.postgres test ./test/postgres.test.js` y aprobó. Estas pruebas no acreditan cortes físicos ni envíos reales.
+Evidencia: `bun run verify` terminó con código 0: tipos sin errores/advertencias, compilación correcta, 37 pruebas aprobadas y una omitida por motor, más el recorrido UI completo. La prueba omitida fue ejecutada por separado mediante `bun test ./test/postgres.test.js` y aprobó. Estas pruebas no acreditan cortes físicos ni envíos reales.
 
 Archivos de esta entrega: `scripts/smoke-ui.mjs`, `scripts/ui-test-server.mjs`, `test/postgres.test.js`, `package.json`, README y guías. Las fases B–G siguen pendientes; la próxima entrega es B1–B4 (ciclo de vida del enlace y validación coherente del portal).
 
@@ -87,7 +87,7 @@ Archivos de esta entrega C: `management.service.ts` (C3/C4), `scheduler.service.
 - [x] D2. Custodia, rotación y permisos documentados en la guía de operación (clave separada, offline, rotación hacia adelante, ACL en Windows).
 - [x] D3. Hashes y cifrado por streaming (sin cargar archivos completos en memoria); copia externa real con fallo visible por volumen ausente; retención que nunca borra copias no verificables.
 - [x] D4. Verificación y restauración para ambos formatos (clave incorrecta, ausente, corrupción y truncado rechazados con mensajes distintos); `restore-backup.mjs` restaura a directorio nuevo y verifica la copia restaurada.
-- [x] D5. PostgreSQL: el script verifica el paquete y muestra el `pg_restore` hacia una base nueva sin tocar la base en uso; documentado con `ROUTER_ENCRYPTION_KEY`.
+- [x] D5. PostgreSQL: el script verifica el paquete y muestra el `pg_restore` para recuperar el esquema operativo de `nuwenet` con el servicio detenido; documentado con `ROUTER_ENCRYPTION_KEY`.
 - [x] D6. Objetivos RPO 24 h y RTO 2 h documentados con simulacro obligatorio.
 - [x] Verificación: `tsc`/`astro check` limpios, compilación correcta, smoke UI y suites `backup/reliability/tasks/usage/pro/auth/integration/router-adapters/building-isolation/pro-http` en verde por grupos.
 
@@ -97,7 +97,7 @@ Archivos de esta entrega D: `backup-crypto.ts` (nuevo), `backup.service.ts`, `ba
 
 La revisión del 12/09/2026 obtuvo: comprobación de tipos sin errores ni advertencias, compilación correcta, 37 pruebas aprobadas, ninguna fallida y una prueba PostgreSQL omitida. La prueba general de interfaz no terminó: heredaba SETUP_TOKEN y, al aislar esa variable, no atendía la confirmación de revisión de vencimientos.
 
-La inspección local encontró SQLite con migraciones hasta la versión 20, un edificio, un ARRIS registrado y ningún departamento. Faltan MikroTik central, datos bancarios, configuración del portal accesible por residentes y credenciales de WhatsApp; el envío está deshabilitado. El estado guardado del ARRIS no equivale a una comprobación física reciente.
+La inspección histórica encontró un edificio, un ARRIS registrado y ningún departamento. Faltan MikroTik central, datos bancarios, configuración del portal accesible por residentes y credenciales de WhatsApp; el envío está deshabilitado. El estado guardado del ARRIS no equivale a una comprobación física reciente.
 
 Se conservan los importes en centavos, las claves de idempotencia, las reversiones con historial, los bloqueos manuales, la separación por edificio y las órdenes persistentes. No se presume capacidad para un número determinado de clientes hasta medirla.
 
@@ -129,7 +129,7 @@ Total orientativo: 21–34 días efectivos, aproximadamente 5–7 semanas de tra
 - A2. Actualizar el flujo para confirmar el diálogo de vencimientos antes de intentar registrar el pago. Esperar resultados visibles y respuestas relevantes; evitar pausas fijas. Recorrer el resto del script y ajustar otras expectativas desactualizadas que aparezcan.
 - A3. Conservar escenarios separados para instalación local y creación inicial protegida por token. El aislamiento del smoke test no debe suprimir la prueba del requisito de seguridad.
 - A4. Establecer una ejecución reproducible de `bun run check`, `bun run test` y `bun run test:ui`, en secuencia por la caché compartida de Astro. Incorporarla a integración continua cuando se disponga del repositorio y proveedor; en esta carpeta no se encontró `.git`.
-- A5. Ejecutar la suite PostgreSQL en su base temporal si hay servicio y permisos disponibles. Mientras no se ejecute, registrar esa limitación y no declarar equivalencia comprobada con SQLite.
+- A5. Ejecutar la suite PostgreSQL con esquemas temporales en `nuwenet` y registrar sus resultados.
 - A6. Actualizar README y guías: WhatsApp implementado frente a habilitado; ARRIS con controles limitados; OpenWrt de consulta; acumulación histórica de consumo; diferencia entre estado guardado y prueba reciente. Mantener los diagnósticos antiguos fechados como históricos.
 
 Archivos principales: `scripts/smoke-ui.mjs`, `test/`, `README.md`, `docs/operacion.md`, `docs/nuwenet-pro.md`, `docs/puesta-en-marcha-pro.md`.
@@ -171,7 +171,7 @@ Criterio de aceptación: un router que no responde o un proveedor de avisos caí
 - D2. Documentar custodia, recuperación y rotación de la clave del paquete. Aplicar permisos del sistema operativo, incluyendo ACL de Windows: `mode: 0o600` por sí solo no demuestra permisos efectivos en Windows.
 - D3. Verificar copia externa real, retención y fallos por volumen ausente. No borrar una copia utilizable antes de confirmar la nueva. Evitar cargar archivos completos en memoria al cifrar o calcular integridad de respaldos grandes.
 - D4. Extender restauración y verificación para paquetes cifrados y conservar compatibilidad explícita con respaldos anteriores. Probar clave incorrecta, corrupción, archivo incompleto y credenciales de router restauradas.
-- D5. Probar recuperación PostgreSQL en una base nueva: inspeccionar el índice del dump no sustituye una restauración completa. Ningún ejercicio sobrescribirá la base operativa.
+- D5. Probar recuperación PostgreSQL en un esquema temporal de `nuwenet`: inspeccionar el índice del dump no sustituye una restauración completa. Ningún ejercicio sobrescribirá la base operativa.
 - D6. Fijar objetivos iniciales a validar: pérdida máxima de datos de 24 horas y recuperación en 2 horas. Ajustar frecuencia y procedimiento si la operación necesita menos pérdida; registrar el tiempo real del simulacro.
 
 Archivos principales: `backup.service.ts`, `backup-policy.ts`, `scripts/restore-backup.mjs`, `docs/operacion.md`.
@@ -209,7 +209,7 @@ Criterio de aceptación: los contratos públicos y reglas de cobro se conservan,
 - G2. Definir con operaciones el volumen objetivo: edificios, departamentos, operadores simultáneos, frecuencia de lectura y crecimiento anual. Usar datos sintéticos y registrar máquina, versión, volumen, latencias p50/p95 y esperas por bloqueo.
 - G3. Medir primero el bloqueo global actual. Propuesta inicial de aceptación para el volumen acordado: p95 menor de 1 segundo en operaciones administrativas sin llamadas externas y cero inconsistencias en concurrencia. Es un objetivo por comprobar, no una capacidad ya demostrada.
 - G4. Si las medidas muestran contención, sustituir el bloqueo global por bloqueos de fila o por recurso e índices/restricciones: factura para pagos y reversión, departamento para decisiones de acceso, unicidad para mensualidades y claves de idempotencia. Establecer orden fijo de adquisición para reducir interbloqueos.
-- G5. Separar operaciones que no requieren el bloqueo financiero, como sesiones y métricas, sin debilitar sus propias garantías. Mantener la serialización SQLite mientras se use una sola conexión.
+- G5. Separar operaciones que no requieren el bloqueo financiero, como sesiones y métricas, sin debilitar sus propias garantías.
 - G6. Repetir exactamente la carga y las pruebas de concurrencia después del cambio. Conservar un mecanismo de retorno al bloqueo global hasta demostrar que no hay duplicados ni pérdida de actualizaciones.
 
 Criterio de aceptación: evidencia antes/después, pruebas con dos instancias aprobadas, aislamiento preservado y objetivo de latencia satisfecho. Si el diseño actual cumple el volumen objetivo, documentar la medida y aplazar el cambio de bloqueos.
@@ -226,11 +226,11 @@ Responsabilidades propuestas: desarrollo implementa y prueba; el dueño del sist
 
 **11. Criterio de finalización del plan**
 
-- [x] Pruebas de interfaz reparadas y suites reproducibles localmente; resultados SQLite y PostgreSQL documentados. CI remota pendiente en A4.
+- [x] Pruebas de interfaz reparadas y suites reproducibles localmente; resultados PostgreSQL documentados. CI remota pendiente en A4.
 - [x] B1–B4: rotación/revocación del portal, tratamiento de enlaces existentes y validación coherente en todos los endpoints. Permisos comprobados vía aislamiento por edificio. Quedan B5–B9.
 - [x] B5–B9: enlaces como hash con emisión única, límites del portal y caché de tráfico, guards por rol con sistema explícito, eventos de seguridad independientes y auditoría estructurada sin descarte silencioso (retención 180 días, fallos visibles vía stderr y `/api/health`).
 - [x] Tareas independientes, recuperación y exclusión entre instancias verificadas (Fase C: avisos desacoplados de la red, diagnóstico por tarea en Actividad/estado/salud, presupuesto de 4 min y tope de 10 por pasada, umbrales en la guía de operación; `test/tasks.test.js`).
-- [x] Respaldos protegidos, copia externa y restauración ensayada (Fase D: paquete AES-256-GCM con clave separada, custodia/rotación/ACL, streaming, compatibilidad heredada, `pg_restore` a base nueva, RPO 24 h/RTO 2 h; `test/backup.test.js`).
+- [x] Respaldos protegidos, copia externa y restauración ensayada (Fase D: paquete AES-256-GCM con clave separada, custodia/rotación/ACL, streaming, compatibilidad heredada, `pg_restore` al esquema de prueba en `nuwenet`, RPO 24 h/RTO 2 h; `test/backup.test.js`).
 - [ ] Matriz de routers actualizada y piloto físico documentado.
 - [ ] Banco/QR y WhatsApp validados o registrados explícitamente como integración pendiente.
 - [ ] Código dividido y frontend crítico con comprobación estática.

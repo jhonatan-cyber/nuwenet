@@ -80,7 +80,7 @@ export class BackupService {
       const directory = path.join(backupRoot(), name); mkdirSync(directory, { recursive: true });
       const file = 'nuwenet.dump';
       {
-        const args = ['--format=custom', '--file', path.join(directory, file)];
+        const args = ['--format=custom', '--schema', this.db.schema, '--file', path.join(directory, file)];
         if (process.env.DATABASE_URL) args.push('--dbname', process.env.DATABASE_URL);
         await runProgram(process.env.PG_DUMP_PATH || 'pg_dump', args);
         await runProgram(process.env.PG_RESTORE_PATH || 'pg_restore', ['--list', path.join(directory, file)]);
@@ -91,7 +91,7 @@ export class BackupService {
       // D1: con clave de recuperación se empaqueta cifrado y se elimina el
       // texto plano; sin ella se conserva el formato heredado sin cifrar.
       const encrypted = Boolean((process.env.BACKUP_ENCRYPTION_KEY || '').trim());
-      const manifest: Record<string, unknown> = { driver: this.db.driver, created_at: new Date().toISOString(), encrypted, files };
+      const manifest: Record<string, unknown> = { driver: this.db.driver, schema: this.db.schema, created_at: new Date().toISOString(), encrypted, files };
       if (encrypted) {
         const key = backupKey();
         manifest.key_fingerprint = keyFingerprint(key);

@@ -1,29 +1,22 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SQL, type TransactionSQL } from 'bun';
 import { createHash, randomBytes } from 'node:crypto';
+import { connectPostgres, postgresSchema } from './postgres-config';
 
 export type DatabaseDriver = 'postgres';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   readonly driver: DatabaseDriver;
+  readonly schema: string;
   private readonly sql: SQL;
   private readonly logger = new Logger(DatabaseService.name);
 
   constructor() {
     if (process.env.DB_DRIVER && process.env.DB_DRIVER !== 'postgres') throw new Error('NuweNet requiere PostgreSQL. Configura DB_DRIVER=postgres y la conexión.');
     this.driver = 'postgres';
-    const url = process.env.DATABASE_URL;
-    if (url && !/^postgres(?:ql)?:\/\//.test(url)) throw new Error('DATABASE_URL debe ser una conexión PostgreSQL.');
-    const ssl = process.env.PGSSLMODE || 'disable';
-    if (!['disable', 'prefer', 'require', 'verify-ca', 'verify-full'].includes(ssl)) throw new Error('PGSSLMODE inválido.');
-    this.sql = url ? new SQL(url, { connectionTimeout: 10, max: 10 }) : new SQL({
-      adapter: 'postgres', hostname: process.env.PGHOST || '127.0.0.1',
-      port: Number(process.env.PGPORT || 5432), database: process.env.PGDATABASE || 'nuwenet',
-      username: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD,
-      ssl: ssl as 'disable' | 'prefer' | 'require' | 'verify-ca' | 'verify-full',
-      connectionTimeout: 10, max: 10,
-    });
+    this.schema = postgresSchema();
+    this.sql = connectPostgres();
   }
 
   async onModuleInit() {
@@ -447,7 +440,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       await tx.unsafe(`DO $$ DECLARE cname TEXT; BEGIN
         SELECT c.conname INTO cname FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
           JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey)
-        WHERE t.relname = 'customers' AND c.contype = 'u' AND array_length(c.conkey, 1) = 1 AND a.attname = 'apartment' LIMIT 1;
+        WHERE t.oid = 'customers'::regclass AND c.contype = 'u' AND array_length(c.conkey, 1) = 1 AND a.attname = 'apartment' LIMIT 1;
         IF cname IS NOT NULL THEN EXECUTE format('ALTER TABLE customers DROP CONSTRAINT %I', cname); END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'customers'::regclass AND conname = 'customers_building_apartment_key') THEN
           ALTER TABLE customers ADD CONSTRAINT customers_building_apartment_key UNIQUE (building_id, apartment);

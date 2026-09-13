@@ -9,7 +9,7 @@ Estado: **aplicación disponible localmente; no preparada aún para servicio de 
 | Elemento | Resultado observado |
 |---|---|
 | Proyecto | `D:\DEV\nuwenet` |
-| Base inspeccionada | SQLite `data/nuwenet.sqlite`, abierta solo para lectura |
+| Base de datos | PostgreSQL `nuwenet`; repetir diagnóstico en la VPS |
 | Esquema | Migración 17 aplicada; clave de firma de recibos presente |
 | Edificio | Edificio Norte, ID 1, habilitado |
 | Departamentos vigentes | 0; todavía no se puede validar un residente real |
@@ -36,7 +36,7 @@ El archivo `.env` configura `HOST=127.0.0.1`, `PORT=3000`. La terminal del agent
 7. Validar puertos del servidor, segmentos/VLAN, DNS si hay nombre de dominio, rutas de retorno y FastTrack. El corte implementado es IPv4/HTTP; no intercepta HTTPS externo ni evita por sí mismo un acceso IPv6 paralelo.
 8. Con un departamento piloto, verificar tráfico, DHCP, suspensión, acceso a `/corte` y `/portal`, y limpieza de reglas al reactivar. No usar una suspensión masiva para la primera validación.
 
-Se preparó `nuwenet-pro.env.example` con los campos pendientes y candidatos LAN comentados. No se cambió `.env` ni se abrieron puertos. La puesta en marcha de un proxy HTTPS o cambios al cortafuegos se decidirán una vez fijado el servidor definitivo.
+Los campos pendientes de red e integraciones se configuran en el único `.env`. La puesta en marcha de HTTPS y el cortafuegos depende del servidor definitivo.
 
 Fuentes para REST y permisos: [REST API RouterOS](https://manual.mikrotik.com/docs/developer-guides/rest-api/) y [políticas de usuarios RouterOS](https://manual.mikrotik.com/docs/authentication-authorization-accounting/user/).
 
