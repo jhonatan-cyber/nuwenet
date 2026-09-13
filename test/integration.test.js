@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -9,11 +10,12 @@ import { routerContract } from './router-contract';
 
 test('gestión, cobros, control simulado y persistencia', async () => {
   const directory = mkdtempSync(path.join(tmpdir(),'nuwenet-test-'));
+  const pg = await createTestDatabase();
   const port = 33000 + Math.floor(Math.random()*10000);
   let child;
   let cookie='';
   async function start() {
-    child = spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,SETUP_TOKEN:'',DB_DRIVER:'sqlite',HOST:'127.0.0.1',PORT:String(port),DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+    child = spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,SETUP_TOKEN:'',DB_DRIVER:'postgres',HOST:'127.0.0.1',PORT:String(port),DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
     let errors=''; child.stderr.on('data',c=>errors+=c);
     await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>reject(new Error(`Servidor no inició: ${errors}`)),60000);
@@ -45,15 +47,16 @@ test('gestión, cobros, control simulado y persistencia', async () => {
     s=await request('overdue',{});
     assert.equal(s.customers[0].status,'suspended');
     assert.equal(s.commands.length,1);
-    s=await request('pay',{id:1});
+    const january=s.invoices.find(i=>i.period==='2020-01').id, february=s.invoices.find(i=>i.period==='2020-02').id;
+    s=await request('pay',{id:january});
     assert.equal(s.customers[0].status,'suspended','Una cuota vencida restante impide la reactivación');
-    await Promise.all(Array.from({length: 5}, () => request('pay',{id:2})));
+    await Promise.all(Array.from({length: 5}, () => request('pay',{id:february})));
     s=await request('state');
     assert.equal(s.events.filter(e => e.message.startsWith('Pago registrado:')).length,2);
     assert.equal(s.customers[0].status,'active');
     assert.equal(s.commands.length,2);
     const eventCount=s.events.length;
-    s=await request('pay',{id:2});
+    s=await request('pay',{id:february});
     assert.equal(s.events.length,eventCount,'El pago repetido es idempotente');
     await request('access',{id:999,status:'suspended'},400);
     await request('access',{id:1,status:'invalid'},400);
@@ -71,5 +74,5 @@ test('gestión, cobros, control simulado y persistencia', async () => {
     assert.equal(s.invoices.filter(i=>i.paid_at).length,2);
     assert.equal(s.customers.length,1);
     await routerContract(request);
-  } finally {await stop();rmSync(directory,{recursive:true,force:true});}
+  } finally {await stop();await pg.close(); rmSync(directory,{recursive:true,force:true});}
 }, 60000);

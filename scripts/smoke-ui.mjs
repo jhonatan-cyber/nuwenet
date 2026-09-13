@@ -1,3 +1,4 @@
+import { createTestDatabase } from '../test/postgres-fixture.js';
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -7,13 +8,14 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nuwenet-ui-'));
+const pg = await createTestDatabase();
 const port = 43000 + Math.floor(Math.random() * 10000);
 const setupToken = 'ui-installation-fixture';
 // Preserve OS/runtime paths, never application credentials or local .env settings.
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|COMSPEC|TEMP|TMP|TMPDIR|HOME|USERPROFILE|LOCALAPPDATA|APPDATA|PLAYWRIGHT_BROWSERS_PATH)$/i.test(key)));
 const server = spawn(process.execPath, ['--no-env-file', 'scripts/ui-test-server.mjs'], {
-  env: { ...environment, SETUP_TOKEN: setupToken, DB_DRIVER: 'sqlite', HOST: '127.0.0.1', PORT: String(port), DATA_DIR: directory, BACKUP_DIR:path.join(directory,'backups'), NOTIFY_CHANNEL:'log', WHATSAPP_SEND_ENABLED:'false', OVERDUE_CRON_MINUTES:'0' },
+  env: { ...environment, ...pg.env, SETUP_TOKEN: setupToken, DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(port), DATA_DIR: directory, BACKUP_DIR:path.join(directory,'backups'), NOTIFY_CHANNEL:'log', WHATSAPP_SEND_ENABLED:'false', OVERDUE_CRON_MINUTES:'0' },
   stdio: ['ignore', 'pipe', 'pipe'],
   windowsHide: true,
 });
@@ -398,5 +400,6 @@ try {
   const target = realpathSync(directory);
   const temp = realpathSync(tmpdir());
   if (path.dirname(target) !== temp || !path.basename(target).startsWith('nuwenet-ui-')) throw new Error('Directorio temporal inesperado.');
+  await pg.close();
   rmSync(target, { recursive: true, force: true });
 }

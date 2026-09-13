@@ -12,16 +12,6 @@ if (destination === source || destination.startsWith(source + path.sep)) throw n
 mkdirSync(destination, { recursive: true });
 // D5: PostgreSQL se restaura sobre una base NUEVA con pg_restore; este script
 // verifica el paquete y deja el volcado listo sin tocar la base en uso.
-if (manifest.driver !== 'sqlite') {
-  for (const name of Object.keys(manifest.files)) {
-    if (manifest.encrypted) await decryptFile(backupKey(), path.join(source, `${name}.enc`), path.join(destination, name));
-    else copyFileSync(path.join(source, name), path.join(destination, name));
-  }
-  console.log(`Paquete ${manifest.encrypted ? 'cifrado ' : ''}verificado. Para PostgreSQL restaura sobre una base nueva, sin sobrescribir la actual:`);
-  console.log(`  pg_restore --dbname postgresql://usuario@127.0.0.1:5432/nuwenet_nueva --clean --if-exists ${path.join(destination, 'nuwenet.dump')}`);
-  console.log('Configura ROUTER_ENCRYPTION_KEY con la clave respaldada antes de iniciar el servidor.');
-  process.exit(0);
-}
 for (const name of Object.keys(manifest.files)) {
   if (manifest.encrypted) await decryptFile(backupKey(), path.join(source, `${name}.enc`), path.join(destination, name));
   else copyFileSync(path.join(source, name), path.join(destination, name));
@@ -32,4 +22,4 @@ const plain = JSON.parse(readFileSync(path.join(source, 'manifest.json'), 'utf8'
 plain.encrypted = false; delete plain.package;
 writeFileSync(path.join(destination, 'manifest.json'), JSON.stringify(plain, null, 2));
 await verifyBackup(destination);
-console.log(`Restauración verificada en ${destination}. Inicia el servidor con DATA_DIR apuntando a ese directorio.`);
+console.log(`Paquete verificado en ${destination}. Restaura nuwenet.dump con pg_restore --dbname <base_nueva> y configura ROUTER_ENCRYPTION_KEY con router.key.`);

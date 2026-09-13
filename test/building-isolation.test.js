@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -5,13 +6,13 @@ import { once } from 'node:events';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Database } from 'bun:sqlite';
 import { chromium } from 'playwright';
 
 test('edificios: acceso aislado, actividad privada y formularios en el edificio seleccionado', async () => {
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-isolation-'));
+  const pg = await createTestDatabase();
   const port=44000+Math.floor(Math.random()*5000), origin=`http://127.0.0.1:${port}`;
-  const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,SETUP_TOKEN:'',DB_DRIVER:'sqlite',HOST:'127.0.0.1',PORT:String(port),DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups')},stdio:['ignore','pipe','pipe'],windowsHide:true});
+  const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,SETUP_TOKEN:'',DB_DRIVER:'postgres',HOST:'127.0.0.1',PORT:String(port),DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups')},stdio:['ignore','pipe','pipe'],windowsHide:true});
   let cookie='', browser;
   async function api(route,body,status=200){
     const response=await fetch(`${origin}/api/${route}`,{method:body===undefined?'GET':'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -30,13 +31,13 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     await api('auth/users',{username:'admin@example.com',password:'fixture-password',role:'admin',ci:'1234567',first_name:'Test',last_name:'Admin',address:'Calle',phone:'70000000'});
     const user=(await api('auth/users')).find(u=>u.username==='admin@example.com');
     await api('buildings/assign',{user_id:user.id,building_id:a});
-    const db=new Database(path.join(directory,'nuwenet.sqlite'));
+    const db=pg.connect();
     try {
       for(const bid of [null,a,b]){
-        db.query('INSERT INTO events(message,building_id) VALUES (?,?)').run(`event-${bid}`,bid);
-        db.query("INSERT INTO notifications(channel,target,message,created_at,building_id) VALUES ('log',?,?,?,?)").run(`phone-${bid}`,`notice-${bid}`,new Date().toISOString(),bid);
+        await db.unsafe('INSERT INTO events(message,building_id) VALUES ($1,$2)',[`event-${bid}`,bid]);
+        await db.unsafe("INSERT INTO notifications(channel,target,message,created_at,building_id) VALUES ('log',$1,$2,$3,$4)",[`phone-${bid}`,`notice-${bid}`,new Date().toISOString(),bid]);
       }
-    } finally {db.close();}
+    } finally {await db.close();}
     await api('auth/login',{username:'admin@example.com',password:'fixture-password'});const adminCookie=cookie;
     assert.equal((await api('routers')).routers.length,1);
     await api(`routers/${routerA.id}`);await api(`routers/${routerB.id}`,undefined,403);
@@ -83,9 +84,9 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     await api('buildings/central',{building_id:b,central_router_id:routerB.id});
     assert.equal((await api(`state?building_id=${b}`)).enforcement.state,'unverified');
     assert.equal((await api(`state?building_id=${a}`)).enforcement.state,'simulated');
-    const deviceDb=new Database(path.join(directory,'nuwenet.sqlite'));
+    const deviceDb=pg.connect();
     const mac='AA:BB:CC:DD:EE:01';
-    try {deviceDb.query("UPDATE routers SET status='connected',snapshot=? WHERE id=?").run(JSON.stringify({manufacturer:'Fixture',model:'Fixture',firmware:'1',interfaces:[],notes:[],clients:[{name:'Laptop B',mac,ip:'192.168.2.20',connection:'Wi-Fi',status:'reported'}]}),routerB.id);} finally {deviceDb.close();}
+    try {await deviceDb.unsafe("UPDATE routers SET status='connected',snapshot=$1 WHERE id=$2",[JSON.stringify({manufacturer:'Fixture',model:'Fixture',firmware:'1',interfaces:[],notes:[],clients:[{name:'Laptop B',mac,ip:'192.168.2.20',connection:'Wi-Fi',status:'reported'}]}),routerB.id]);} finally {await deviceDb.close();}
     assert.equal((await api(`state?building_id=${b}`)).enforcement.state,'real');
     assert.equal((await api('state')).settings.central_router_id,undefined);
     cookie=adminCookie;
@@ -101,8 +102,8 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     await page.getByRole('button',{name:'Guardar',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
     assert.equal((await api(`routers/${routerB.id}`)).router.devices[0].customer_id,stateB.customers[0].id);
     assert.equal(await page.locator('nav [data-page="backups"]').isVisible(),false);
-    const changedDb=new Database(path.join(directory,'nuwenet.sqlite'));
-    try{changedDb.query("UPDATE routers SET snapshot=?,status='error' WHERE id=?").run(JSON.stringify({manufacturer:'Fixture',model:'Fixture',firmware:'1',interfaces:[],notes:[],clients:[{mac,ip:'192.168.2.21'}]}),routerB.id);}finally{changedDb.close();}
+    const changedDb=pg.connect();
+    try{await changedDb.unsafe("UPDATE routers SET snapshot=$1,status='error' WHERE id=$2",[JSON.stringify({manufacturer:'Fixture',model:'Fixture',firmware:'1',interfaces:[],notes:[],clients:[{mac,ip:'192.168.2.21'}]}),routerB.id]);}finally{await changedDb.close();}
     assert.equal((await api(`routers/${routerB.id}`)).router.devices[0].customer_id,stateB.customers[0].id);
     assert.equal((await api(`state?building_id=${b}`)).enforcement.state,'error');
     await api(`routers/${routerB.id}/devices`,{mac,customer_id:null});
@@ -121,6 +122,6 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     await api(`routers/${routerB.id}`,undefined,403);assert.equal((await api('routers')).routers.length,1);
   } finally {
     await browser?.close();if(server.exitCode===null){const exited=once(server,'exit');server.kill();await exited;}
-    const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-isolation-'));rmSync(resolved,{recursive:true,force:true});
+    const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-isolation-'));await pg.close(); rmSync(resolved,{recursive:true,force:true});
   }
 },60000);

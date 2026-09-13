@@ -13,7 +13,7 @@ function packageFiles(manifest: { files: Record<string, unknown>; package?: Reco
   // texto plano. Copiar nombres de la otra rompe la copia externa.
   const names = manifest.encrypted ? [...Object.keys(manifest.package || {}), 'manifest.json'] : [...Object.keys(manifest.files), 'manifest.json'];
   for (const file of names) {
-    if (!['nuwenet.sqlite', 'nuwenet.dump', 'router.key', 'manifest.json'].includes(file) && !packageName.test(file)) throw new Error('Archivo de respaldo inválido.');
+    if (!['nuwenet.dump', 'router.key', 'manifest.json'].includes(file) && !packageName.test(file)) throw new Error('Archivo de respaldo inválido.');
   }
   return names;
 }
@@ -42,7 +42,7 @@ export async function maintainBackups(root: string, current: string, verify: (di
     try {
       await verify(s.dir);
       const files = readdirSync(s.dir);
-      if (files.some(f => !['nuwenet.sqlite', 'nuwenet.dump', 'router.key', 'manifest.json'].includes(f) && !packageName.test(f) || !lstatSync(path.join(s.dir, f)).isFile())) continue;
+      if (files.some(f => !['nuwenet.dump', 'router.key', 'manifest.json'].includes(f) && !packageName.test(f) || !lstatSync(path.join(s.dir, f)).isFile())) continue;
       for (const file of files) unlinkSync(path.join(s.dir, file));
       rmdirSync(s.dir); removed.push(s.name);
     } catch { /* Preserve any backup whose structure or integrity cannot be verified. */ }

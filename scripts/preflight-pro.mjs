@@ -1,4 +1,4 @@
-import {Database} from 'bun:sqlite';
+import { SQL } from 'bun';
 import {existsSync,readFileSync} from 'node:fs';
 import {networkInterfaces} from 'node:os';
 import path from 'node:path';
@@ -15,40 +15,42 @@ if(existsSync(source))for(const line of readFileSync(source,'utf8').split(/\r?\n
   else value=value.replace(/\s+#.*$/,'');
   env[match[1]]=value;
 }
+const fileEnv = { ...env };
+Object.assign(env, process.env);
 const present=key=>Boolean(env[key]?.trim());
 const required=['NUWENET_PORTAL_IP','NUWENET_PUBLIC_URL','WHATSAPP_TOKEN','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_API_VERSION','WHATSAPP_TEMPLATE','WHATSAPP_LANGUAGE','WHATSAPP_APP_SECRET','WHATSAPP_VERIFY_TOKEN'];
 const report={
   checked_at:new Date().toISOString(),config_file:source,mode:'read-only',
-  config:{database:env.DB_DRIVER||'sqlite',host:env.HOST||'127.0.0.1',port:env.PORT||'3000',notify_channel:env.NOTIFY_CHANNEL||'log',whatsapp_send_enabled:env.WHATSAPP_SEND_ENABLED==='true',presence:Object.fromEntries(required.map(k=>[k,present(k)]))},
-  shell_overrides:Object.fromEntries(['HOST','PORT','DB_DRIVER','DATA_DIR'].filter(k=>env[k]!==undefined&&process.env[k]!==undefined&&env[k]!==process.env[k]).map(k=>[k,{file:env[k],shell:process.env[k]}])),
+  config:{database:env.DB_DRIVER||'postgres',host:env.HOST||'127.0.0.1',port:env.PORT||'3000',notify_channel:env.NOTIFY_CHANNEL||'log',whatsapp_send_enabled:env.WHATSAPP_SEND_ENABLED==='true',presence:Object.fromEntries(required.map(k=>[k,present(k)]))},
+  shell_overrides:Object.fromEntries(['HOST','PORT','DB_DRIVER'].filter(k=>fileEnv[k]!==undefined&&process.env[k]!==undefined&&fileEnv[k]!==process.env[k]).map(k=>[k,{file:fileEnv[k],shell:process.env[k]}])),
   local_ipv4:Object.values(networkInterfaces()).flat().filter(i=>i?.family==='IPv4'&&!i.internal&&!i.address.startsWith('169.254.')).map(i=>i.address),
   database:{},http:[],blockers:[],
 };
-if(report.config.database==='sqlite'){
-  const file=path.resolve(root,env.DATA_DIR||'data','nuwenet.sqlite');
-  report.database.file=file;
-  if(existsSync(file)){
-    const db=new Database(file,{readonly:true});
-    try{
-      const has=name=>Boolean(db.query("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name));
-      if(has('schema_migrations')){
-        const applied=new Set(db.query('SELECT version FROM schema_migrations').all().map(r=>r.version));
-        const expected=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+let db;
+try {
+  if (report.config.database !== 'postgres') throw new Error('Motor no soportado');
+  db = env.DATABASE_URL ? new SQL(env.DATABASE_URL) : new SQL({adapter:'postgres',hostname:env.PGHOST||'127.0.0.1',port:Number(env.PGPORT||5432),database:env.PGDATABASE||'nuwenet',username:env.PGUSER||'postgres',password:env.PGPASSWORD,ssl:env.PGSSLMODE||'disable',connectionTimeout:10});
+  await db.begin('ISOLATION LEVEL REPEATABLE READ READ ONLY', async tx => {
+    const has=async name=>Boolean((await tx`SELECT to_regclass(${name}) present`)[0].present);
+      if(await has('schema_migrations')){
+        const applied=new Set((await tx.unsafe('SELECT version FROM schema_migrations')).map(r=>r.version));
+        const expected=Array.from({length:23},(_,i)=>i+1);
         report.database.migration=Math.max(0,...applied);
         report.database.missing_migrations=expected.filter(v=>!applied.has(v));
         if(report.database.missing_migrations.length)report.blockers.push(`Faltan migraciones: ${report.database.missing_migrations.join(', ')}.`);
       }
-      if(has('buildings'))report.database.buildings=db.query('SELECT id,name,central_router_id,disabled FROM buildings').all();
-      if(has('routers'))report.database.routers=db.query("SELECT id,adapter,host,port,protocol,building_id,status,disabled,last_checked,CASE WHEN credentials IS NOT NULL AND credentials<>'' THEN 1 ELSE 0 END credentials_present FROM routers").all();
-      if(has('settings'))report.database.banks=db.query("SELECT key,value FROM settings WHERE key LIKE 'bank:%'").all().map(row=>{
+      if(await has('buildings'))report.database.buildings=(await tx.unsafe('SELECT id,name,central_router_id,disabled FROM buildings'));
+      if(await has('routers'))report.database.routers=(await tx.unsafe("SELECT id,adapter,host,port,protocol,building_id,status,disabled,last_checked,CASE WHEN credentials IS NOT NULL AND credentials<>'' THEN 1 ELSE 0 END credentials_present FROM routers"));
+      if(await has('settings'))report.database.banks=(await tx.unsafe("SELECT key,value FROM settings WHERE key LIKE 'bank:%'")).map(row=>{
         try{const bank=JSON.parse(row.value);return {building_id:Number(row.key.slice(5)),bank:bank.bank||null,holder_present:!!bank.holder,account_present:!!bank.account,qr_image_present:!!bank.qr_image,qr_text_present:!!bank.qr_text,amount_template:!!bank.qr_text?.includes('{amount}'),contact_present:!!bank.contact};}catch{return {invalid:true};}
       });
-      if(has('customers'))report.database.customers=db.query("SELECT COUNT(*) total,COALESCE(SUM(CASE WHEN phone IS NOT NULL AND phone<>'' THEN 1 ELSE 0 END),0) with_phone FROM customers WHERE archived=0").get();
-      if(has('notifications'))report.database.notifications=db.query('SELECT channel,delivery_status,COUNT(*) total FROM notifications GROUP BY channel,delivery_status').all();
-      if(has('settings'))report.database.receipt_key_present=!!db.query("SELECT key FROM settings WHERE key='receipt-signature-key'").get();
-    }finally{db.close();}
-  }else report.blockers.push('No existe la base SQLite configurada.');
-}else report.blockers.push('Este diagnóstico no conecta a PostgreSQL; revisar la base activa por separado.');
+      if(await has('customers'))report.database.customers=(await tx.unsafe("SELECT COUNT(*) total,COALESCE(SUM(CASE WHEN phone IS NOT NULL AND phone<>'' THEN 1 ELSE 0 END),0) with_phone FROM customers WHERE archived=0"))[0];
+      if(await has('notifications'))report.database.notifications=(await tx.unsafe('SELECT channel,delivery_status,COUNT(*) total FROM notifications GROUP BY channel,delivery_status'));
+      if(await has('settings'))report.database.receipt_key_present=!!(await tx.unsafe("SELECT key FROM settings WHERE key='receipt-signature-key'"))[0];
+
+  });
+} catch { report.blockers.push('No se pudo inspeccionar PostgreSQL. Revisa conexión, permisos y migraciones.'); }
+finally { if(db) await db.close(); }
 const origins=new Set([`http://127.0.0.1:${report.config.port}`,'http://127.0.0.1:4321']);
 for(const origin of origins)for(const route of ['/api/auth/status','/portal/','/corte/']){
   try{const r=await fetch(origin+route,{redirect:'manual',signal:AbortSignal.timeout(3000)});report.http.push({origin,route,status:r.status});await r.body?.cancel();}
@@ -65,5 +67,5 @@ for(const building of report.database.buildings||[])if(!building.disabled){
 }
 if(!report.config.whatsapp_send_enabled)report.blockers.push('El envío WhatsApp está deshabilitado.');
 for(const key of required.filter(k=>k.startsWith('WHATSAPP_')))if(!present(key))report.blockers.push(`Falta ${key}.`);
-if(!report.database.customers?.total)report.blockers.push('No hay departamentos vigentes para validar el flujo de residente.');
+if(!Number(report.database.customers?.total))report.blockers.push('No hay departamentos vigentes para validar el flujo de residente.');
 console.log(JSON.stringify(report,null,2));

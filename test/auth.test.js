@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -8,11 +9,12 @@ import { once } from 'node:events';
 
 test('auth, abonos parciales, moneda y modo mixto', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'nuwenet-auth-'));
+  const pg = await createTestDatabase();
   const port = 35000 + Math.floor(Math.random() * 5000);
   let child;
   let jar = '';
   async function start() {
-    child = spawn(process.execPath, ['apps/api/dist/main.js'], { env: { ...process.env, SETUP_TOKEN: '', DB_DRIVER: 'sqlite', HOST: '127.0.0.1', PORT: String(port), DATA_DIR: directory, CURRENCY: 'Bs' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['apps/api/dist/main.js'], { env: { ...process.env, SETUP_TOKEN: '', DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(port), DATA_DIR: directory, CURRENCY: 'Bs' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let errors = ''; child.stderr.on('data', c => errors += c);
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`Servidor no inició: ${errors}`)), 60000);
@@ -93,5 +95,5 @@ test('auth, abonos parciales, moneda y modo mixto', async () => {
     await request('auth/logout', {});
     assert.equal((await request('auth/me', undefined, 200, false)).authenticated, false);
     await request('state', undefined, 401, false);
-  } finally { await stop(); rmSync(directory, { recursive: true, force: true }); }
+  } finally { await stop(); await pg.close(); rmSync(directory, { recursive: true, force: true }); }
 }, 60000);

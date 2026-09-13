@@ -2,8 +2,9 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { AdapterRegistry } from '../apps/api/dist/routers/adapter-registry.js';
 import { RoutersService } from '../apps/api/dist/routers/routers.service.js';
+import { runAsSystem } from '../apps/api/dist/common/request-context.js';
 
-test('automatic connection detects supported interfaces and never saves failed detection', async () => {
+test('automatic connection detects supported interfaces and never saves failed detection', () => runAsSystem(async () => {
   const originalFetch = globalThis.fetch;
   const credentials = { username: 'fixture', password: 'private-fixture' };
   let page = '', selected = 'mikrotik-rest', calls = [];
@@ -58,4 +59,4 @@ test('automatic connection detects supported interfaces and never saves failed d
     await assert.rejects(service.connect({ host: '192.168.99.1', ...credentials }));
     assert.equal(calls.length, 0);
   } finally { globalThis.fetch = originalFetch; }
-});
+}));

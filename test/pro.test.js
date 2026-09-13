@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync} from 'node:fs';
@@ -12,8 +13,9 @@ import {runAsSystem} from '../apps/api/dist/common/request-context.js';
 
 test('Pro: tokens, aislamiento, transferencias atómicas, recibos firmados y WhatsApp sin bloqueo',async()=>{
   const dir=mkdtempSync(path.join(tmpdir(),'nuwenet-pro-'));
+  const pg = await createTestDatabase();
   const keys=['DB_DRIVER','DATA_DIR','NOTIFY_CHANNEL'],before=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
-  Object.assign(process.env,{DB_DRIVER:'sqlite',DATA_DIR:dir,NOTIFY_CHANNEL:'log'});
+  Object.assign(process.env,{DB_DRIVER:'postgres',DATA_DIR:dir,NOTIFY_CHANNEL:'log'});
   let db;
   try {
     db=new DatabaseService();await db.onModuleInit();
@@ -63,7 +65,7 @@ test('Pro: tokens, aislamiento, transferencias atómicas, recibos firmados y Wha
   } finally {
     if(db)await db.onModuleDestroy();
     for(const [k,v]of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}
-    const resolved=realpathSync(dir);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-pro-'));rmSync(resolved,{recursive:true,force:true});
+    const resolved=realpathSync(dir);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-pro-'));await pg.close(); rmSync(resolved,{recursive:true,force:true});
   }
 });
 

@@ -4,7 +4,7 @@ Plan de trabajo: [implementación de mejoras, prioridades y criterios de aceptac
 
 Interfaz: preferencias, perfil, planes y departamentos (listado, formularios y diálogos) utilizan islas React con shadcn/ui y Tailwind; la migración es gradual. La gráfica de consumo sigue compartida con el portal. Consulta [estilos, componentes y alcance migrado](docs/estilos-y-componentes.md).
 
-Sistema de gestión de internet para edificios: **NestJS + Astro + Bun**, con **SQLite local** o **PostgreSQL** seleccionable por entorno.
+Sistema de gestión de internet para edificios: **NestJS + Astro + Bun**, con **PostgreSQL** como único motor de base de datos para despliegue en VPS.
 
 El panel incluye **Routers** para registrar conexiones y probar consultas reales mediante adaptadores ARRIS Touchstone, MikroTik REST y OpenWrt ubus. MikroTik puede actuar como equipo central para aplicar acceso y velocidad mediante una cola persistente. Consulta [la guía de operación, permisos, automatizaciones y respaldos](docs/operacion.md) y [la API de routers](docs/router-api.md).
 
@@ -18,9 +18,9 @@ bun install --frozen-lockfile
 
 El archivo de dependencias es `bun.lock`. NestJS se compila con TypeScript para conservar los metadatos de decoradores usados en inyección de dependencias y validaciones.
 
-## Desarrollo local con SQLite
+## Desarrollo
 
-Copia `.env.example` como `.env` si todavía no existe. La configuración predeterminada utiliza SQLite.
+Copia `.env.example` como `.env` si todavía no existe. Configura la conexión PostgreSQL y `ROUTER_ENCRYPTION_KEY` antes de iniciar.
 
 ```sh
 bun run dev
@@ -39,7 +39,7 @@ Abre http://127.0.0.1:3000. NestJS sirve la API y el frontend compilado por Astr
 
 ## PostgreSQL
 
-Copia `.env.postgres.example` como `.env.postgres` y configura la conexión. Si ya existe un archivo local con tus credenciales, consérvalo. Los archivos `.env` y `.env.postgres` están excluidos del repositorio; los ejemplos no contienen contraseñas reales.
+Copia `.env.example` como `.env` y configura la conexión. `.env.postgres.example` queda como plantilla alternativa. Si ya existe un archivo local con tus credenciales, consérvalo. Los archivos `.env` y `.env.postgres` están excluidos del repositorio; los ejemplos no contienen contraseñas reales.
 
 ```dotenv
 DB_DRIVER=postgres
@@ -56,7 +56,7 @@ Prepara la base si no existe y ejecuta el sistema:
 ```sh
 bun run db:postgres:create
 bun run build
-bun run start:postgres
+bun run start
 ```
 
 `db:postgres:create` conecta a la base de mantenimiento `postgres` mediante las variables `PG*`; requiere permiso para crear bases y no modifica una base existente. Las tablas y el registro de migraciones se crean al iniciar NestJS.
@@ -64,10 +64,10 @@ bun run start:postgres
 Para desarrollar con PostgreSQL:
 
 ```sh
-bun --env-file=.env.postgres run dev
+bun run dev
 ```
 
-SQLite y PostgreSQL son **alternativas por entorno**. Cambiar el motor no copia ni sincroniza los datos. La base SQLite original se conserva en `data/nuwenet.sqlite`; PostgreSQL guarda sus propios registros.
+El sistema requiere PostgreSQL. Los archivos SQLite antiguos no se leen ni se migran automáticamente.
 
 En un alojamiento web configura sus variables de entorno: `DB_DRIVER=postgres`, la conexión PostgreSQL y `HOST=0.0.0.0` si la plataforma lo requiere. `DATABASE_URL` también se admite y tiene prioridad sobre las variables `PG*`; en ese caso el SSL debe ir en la URL, por ejemplo `?sslmode=verify-full`. Con variables separadas utiliza `PGSSLMODE` según el proveedor. La configuración local no publica automáticamente la aplicación en internet.
 
@@ -75,8 +75,7 @@ En un alojamiento web configura sus variables de entorno: `DB_DRIVER=postgres`, 
 
 | Variable | Predeterminado | Uso |
 | --- | --- | --- |
-| `DB_DRIVER` | `sqlite` | `sqlite` o `postgres` |
-| `DATA_DIR` | `data` | Directorio SQLite, relativo a la raíz del proyecto o absoluto |
+| `DB_DRIVER` | `postgres` | Único motor admitido |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `5432` | Servidor PostgreSQL |
 | `PGDATABASE` | `nuwenet` | Base PostgreSQL |
 | `PGUSER` | `postgres` | Usuario PostgreSQL |
@@ -94,13 +93,13 @@ No uses variables `PUBLIC_*` para credenciales: Astro puede incluirlas en el nav
 
 ## Estructura
 
-- `apps/api/src/database`: conexión mediante Bun SQL, selección de motor, migración inicial y transacciones.
+- `apps/api/src/database`: conexión PostgreSQL mediante Bun SQL, migración inicial y transacciones.
 - `apps/api/src/management`: controladores, DTOs y reglas de planes, departamentos, cobros y acceso.
 - `apps/web/src`: páginas, componentes, layout, estilos e interacción del panel Astro.
-- `test`: integración SQLite y PostgreSQL.
+- `test`: integración PostgreSQL.
 - `scripts`: preparación PostgreSQL y prueba del navegador.
 
-Las consultas de negocio se parametrizan con Bun SQL. SQLite serializa el acceso a su conexión; PostgreSQL utiliza un bloqueo transaccional compartido entre instancias para evitar duplicar pagos y decisiones de acceso simultáneas. El esquema inicial conserva las tablas de la primera versión SQLite. Las migraciones posteriores deben añadirse como nuevas versiones.
+Las consultas de negocio se parametrizan con Bun SQL. PostgreSQL utiliza un bloqueo transaccional compartido entre instancias para evitar duplicar pagos y decisiones de acceso simultáneas. Las migraciones posteriores deben añadirse como nuevas versiones.
 
 ## Validación
 
@@ -127,9 +126,9 @@ Para ejecutar tipos, compilación, suite e interfaz en secuencia, sin compilar d
 bun run verify
 ```
 
-La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y una SQLite temporal. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend y no habilita WhatsApp. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su base temporal.
+La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a una base PostgreSQL temporal. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend y no habilita WhatsApp. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su base temporal.
 
-También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La prueba del navegador siempre utiliza una SQLite temporal.
+También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La prueba del navegador siempre utiliza una base PostgreSQL temporal.
 
 ## Funciones y alcance
 
@@ -143,6 +142,14 @@ El control de acceso es **mixto**: real en el equipo central por IP (`suspend`, 
 
 El portal permite consultar la cuenta, reportar transferencias y mostrar datos bancarios/QR por edificio; administración verifica el ingreso antes de aprobar. No hay conciliación bancaria automática ni facturación fiscal. El consumo incluye historial diario y mensual persistente a partir de muestras de colas MikroTik, con indicación de reinicios y huecos; el tráfico en vivo es una consulta distinta. La puesta en marcha con residentes exige validar servidor, red e integraciones en su entorno real.
 
-Desde **Respaldos** puedes crear y verificar copias; los intervalos se configuran en **Edificio y automatización**. SQLite permite copias consistentes en línea e incluye la clave de los routers. Para restaurar a un directorio nuevo utiliza `scripts/restore-backup.mjs`; consulta el procedimiento y las diferencias con PostgreSQL en [la guía de operación](docs/operacion.md#respaldos-y-restauración).
+Desde **Respaldos** puedes crear y verificar copias; los intervalos se configuran en **Edificio y automatización**. PostgreSQL utiliza `pg_dump` y `pg_restore`; instala estas herramientas en la VPS. Para restaurar a un directorio nuevo utiliza `scripts/restore-backup.mjs`; consulta el procedimiento en [la guía de operación](docs/operacion.md#respaldos-y-restauración).
 
 Documentación: [NestJS](https://docs.nestjs.com/first-steps), [Astro](https://docs.astro.build/en/guides/client-side-scripts/) y [Bun SQL](https://bun.com/docs/runtime/sql).
+
+## Despliegue en VPS
+
+Configura `.env` con PostgreSQL, `ROUTER_ENCRYPTION_KEY` (32 bytes aleatorios en base64) y un `SETUP_TOKEN` privado para crear el primer administrador. Conserva las claves entre despliegues. Compila con `bun run build` y ejecuta `bun run start` mediante un servicio del sistema. Publica el dominio con un proxy HTTPS hacia `127.0.0.1:3000`; configura `COOKIE_SECURE=true`, `TRUST_PROXY=loopback` y `ALLOWED_ORIGINS=https://tu-dominio`.
+
+La VPS necesita conectividad hacia los routers de cada edificio mediante una red privada o VPN. Las direcciones privadas de los routers requieren esa conexión desde la VPS.
+
+Las pruebas requieren una instancia PostgreSQL de pruebas con permiso `CREATEDB`, además de `pg_dump` y `pg_restore`. Cada escenario crea y elimina exclusivamente su propia base `nuwenet_test_*`; no usa los datos de la aplicación. Para usar el archivo alternativo: `bun --env-file=.env.postgres run verify`.

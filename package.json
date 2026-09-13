@@ -13,9 +13,9 @@
     "check": "bun run --cwd apps/api check && bun run --cwd apps/web check",
     "start": "bun apps/api/dist/main.js",
     "start:postgres": "bun --env-file=.env.postgres apps/api/dist/main.js",
-    "db:postgres:create": "bun --env-file=.env.postgres scripts/create-postgres.mjs",
+    "db:postgres:create": "bun scripts/create-postgres.mjs",
     "test": "bun run build && bun test ./test",
-    "test:postgres": "bun run build && bun --env-file=.env.postgres test ./test/postgres.test.js",
+    "test:postgres": "bun run build && bun test ./test/postgres.test.js",
     "test:ui": "bun run build && bun scripts/smoke-ui.mjs",
     "verify": "bun run check && bun run test && bun scripts/smoke-ui.mjs"
   },
@@ -28,5 +28,7 @@
     "bun": ">=1.4.0"
   },
   "packageManager": "bun@1.4.0",
-  "trustedDependencies": ["esbuild"]
+  "trustedDependencies": [
+    "esbuild"
+  ]
 }

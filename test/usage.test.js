@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync} from 'node:fs';
@@ -15,8 +16,9 @@ const owner={id:1,role:'superadmin',username:'owner'};
 const sample=(down,up,id='*A',name='nuwenet-department-1')=>({id,name,target:'192.168.1.10/32',downloadBytes:down,uploadBytes:up,downloadRate:0,uploadRate:0});
 async function fixture(run){
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-usage-'));
+  const pg = await createTestDatabase();
   const before={DB_DRIVER:process.env.DB_DRIVER,DATA_DIR:process.env.DATA_DIR};
-  process.env.DB_DRIVER='sqlite';process.env.DATA_DIR=directory;
+  process.env.DB_DRIVER='postgres';process.env.DATA_DIR=directory;
   let db=new DatabaseService();
   try{
     await db.onModuleInit();const management=new ManagementService(db,{},{});
@@ -36,7 +38,7 @@ async function fixture(run){
     await run({get db(){return db;},get usage(){return usage;},management,portalTokens:emitted.map(e=>e.token),history:(id=1,month='2026-09')=>requestContext.run(owner,()=>usage.history(id,month)),restart:async()=>{await db.onModuleDestroy();db=new DatabaseService();await db.onModuleInit();usage=new UsageService(db,{});}});
   }finally{
     await db.onModuleDestroy();for(const[k,v]of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}
-    const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-usage-'));rmSync(resolved,{recursive:true,force:true});
+    const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-usage-'));await pg.close(); rmSync(resolved,{recursive:true,force:true});
   }
 }
 

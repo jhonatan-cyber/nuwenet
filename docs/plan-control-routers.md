@@ -83,7 +83,7 @@ Archivos (revisión 2026-09-13): `apps/web/src/components/RoutersPanel.tsx`, `Cu
 - [ ] 5.1 Prueba punta a punta en 1 AP + 1 depto de prueba (suspender, navegar bloqueado, reactivar, velocidad limitada).
 - [x] 5.2 Prueba de concurrencia: 2 pagos simultáneos no duplican ni dejan estado inconsistente (idempotencia por `request_key`, `acting`/`checking` por router, `task_locks` en `processQueue`, reintento ordenado por `commands.id`).
 - [x] 5.3a Endurecer (código): IPs RFC1918 en `router-network.ts`, sin redirecciones, timeout 12s, tope 1MB, TLS por defecto de `fetch`, `ROUTER_ENCRYPTION_KEY` 32 bytes, credenciales AES-256-GCM nunca expuestas.
-- [ ] 5.3b Endurecer (prod física): HTTPS al MikroTik con cert válido, `ROUTER_ENCRYPTION_KEY` en prod, backup de `data/nuwenet.sqlite` o dump Postgres. Revisión 2026-09-13: la parte de backup en código está hecha (Fase D: paquete AES-256-GCM, custodia/rotación, streaming); queda el entorno físico.
+- [ ] 5.3b Endurecer (prod física): HTTPS al MikroTik con cert válido, `ROUTER_ENCRYPTION_KEY` en prod, dump PostgreSQL. Revisión 2026-09-13: la parte de backup en código está hecha (Fase D: paquete AES-256-GCM, custodia/rotación, streaming); queda el entorno físico.
 - [x] 5.4 Definir rollback: cómo volver a modo simulado si falla el MikroTik (quitar IP / quitar central / limpiar `nuwenet-suspend-*` y `nuwenet-*` en WinBox; ver `router-api.md`).
 - [x] 5.5 Actualizar `docs/router-api.md` y `README.md`: capacidades reales, requisitos MikroTik, límites.
 - [x] 5.6 Smoke UI: `bunx playwright install chromium` + `bun run test:ui`. Revisión 2026-09-13 (tarde): verde tras Billing, Operaciones, Routers, Fase C y Fase D; re-ejecutar tras cada cambio (`bun run check`, `bun run test`).

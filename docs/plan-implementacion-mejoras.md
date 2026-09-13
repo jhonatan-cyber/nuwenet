@@ -38,7 +38,7 @@ Detalle y evidencia de las entregas (cuenta, planes, departamentos y cobros) en 
 
 - [x] Limpieza inicial de estilos (adelanto parcial de F3): retiradas 35 apariciones de clases sin referencias y 839 declaraciones reemplazadas por reglas posteriores; eliminados comentarios de temas antiguos. Detalles y propuesta de migración gradual a shadcn en [estilos y componentes](estilos-y-componentes.md). F3 no se considera terminado: la conversión de vistas a componentes sigue pendiente.
 
-- [x] A1. Servidor UI con `--no-env-file`, lista permitida de variables del sistema, SQLite y respaldos temporales, WhatsApp deshabilitado y bloqueo de HTTP saliente. Limpieza limitada al directorio temporal verificado. Captura de errores fuera de `data/`.
+- [x] A1. Servidor UI con `--no-env-file`, lista permitida de variables del sistema, PostgreSQL y respaldos temporales, WhatsApp deshabilitado y bloqueo de HTTP saliente. Limpieza limitada al directorio temporal verificado. Captura de errores fuera de `data/`.
 - [x] A2. Smoke UI actualizado y aprobado: confirma vencimientos, archivo, restauración, reactivación y eliminación de conexión; utiliza el formulario actual de administradores, opciones avanzadas de router y etiquetas actuales de respaldo/auditoría. Verifica persistencia tras recarga y vista móvil.
 - [x] A3. Código de instalación ausente e incorrecto rechazados por HTTP; código válido utilizado desde el navegador. La suite de autenticación conserva y aprueba la instalación local sin código.
 - [x] A4 (local). Añadido `bun run verify`: tipos, compilación, suite e interfaz en secuencia, con una sola compilación.

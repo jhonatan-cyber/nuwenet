@@ -1,7 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
 import type { RouterCredentials } from './router.types';
 
 @Injectable()
@@ -9,17 +7,7 @@ export class CredentialVault {
   private key?: Buffer;
   private getKey(): Buffer {
     if (this.key) return this.key;
-    let encoded = process.env.ROUTER_ENCRYPTION_KEY;
-    if (!encoded && (process.env.DB_DRIVER || 'sqlite') === 'sqlite') {
-      const directory = path.resolve(__dirname, '../../../..', process.env.DATA_DIR || 'data');
-      const file = path.join(directory, 'router.key');
-      mkdirSync(directory, { recursive: true });
-      if (!existsSync(file)) {
-        try { writeFileSync(file, randomBytes(32).toString('base64'), { flag: 'wx', mode: 0o600 }); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
-      }
-      encoded = readFileSync(file, 'utf8').trim();
-    }
+    const encoded = process.env.ROUTER_ENCRYPTION_KEY;
     const key = Buffer.from(encoded || '', 'base64');
     if (key.length !== 32) throw new ServiceUnavailableException('Configura ROUTER_ENCRYPTION_KEY con una clave de 32 bytes en base64.');
     this.key = key;

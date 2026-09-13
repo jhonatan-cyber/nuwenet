@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync,readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
@@ -17,9 +18,10 @@ import {NotifierService} from '../apps/api/dist/management/notifier.service.js';
 
 async function fixture(run){
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-reliability-'));
+  const pg = await createTestDatabase();
   const names=['DB_DRIVER','DATA_DIR','BACKUP_DIR','ROUTER_ENCRYPTION_KEY','CURRENCY','OVERDUE_CRON_MINUTES'];
   const previous=Object.fromEntries(names.map(key=>[key,process.env[key]]));
-  process.env.DB_DRIVER='sqlite';process.env.DATA_DIR=directory;process.env.BACKUP_DIR=path.join(directory,'backups');delete process.env.ROUTER_ENCRYPTION_KEY;process.env.CURRENCY='Bs';process.env.OVERDUE_CRON_MINUTES='0';
+  process.env.DB_DRIVER='postgres';process.env.DATA_DIR=directory;process.env.BACKUP_DIR=path.join(directory,'backups');process.env.ROUTER_ENCRYPTION_KEY = pg.env.ROUTER_ENCRYPTION_KEY;process.env.CURRENCY='Bs';process.env.OVERDUE_CRON_MINUTES='0';
   const db=new DatabaseService();await db.onModuleInit();const auth=new AuthService(db);
   const calls=[];let fail=false;
   const routers={action:async(id,action)=>{calls.push({id,...action});if(fail)throw new Error('Device unavailable');},releaseClient:async(id,ip)=>{calls.push({id,ip,action:'cleanup'});if(fail)throw new Error('Device unavailable');}};
@@ -27,7 +29,7 @@ async function fixture(run){
   // B7: las operaciones directas de estos tests corren como sistema explícito,
   // salvo los bloques que fijan su propio actor (p. ej. caja con admin).
   try{await runAsSystem(()=>run({db,auth,service,routers,calls,directory,setFail:value=>{fail=value;}}));}
-  finally{await db.onModuleDestroy();for(const [key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-reliability-'));rmSync(resolved,{recursive:true,force:true});}
+  finally{await db.onModuleDestroy();for(const [key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-reliability-'));await pg.close(); rmSync(resolved,{recursive:true,force:true});}
 }
 
 test('departamento: varios dispositivos, límite compartido, cambio DHCP y desvinculación',()=>fixture(async({db,service,routers,calls})=>{
@@ -165,7 +167,7 @@ test('respaldo en línea con clave y restauración a directorio nuevo',()=>fixtu
   const backups=new BackupService(db),backup=await backups.create(),source=path.join(directory,'backups',backup.name),destination=path.join(directory,'restored');
   assert.equal(backups.list().length,1);assert.equal((await backups.verify(backup.name)).verified,true);
   const restore=spawnSync(process.execPath,['scripts/restore-backup.mjs',source,destination],{encoding:'utf8',windowsHide:true});
-  assert.equal(restore.status,0,restore.stderr);assert.equal((await verifyBackup(destination)).driver,'sqlite');
+  assert.equal(restore.status,0,restore.stderr);assert.equal((await verifyBackup(destination)).driver,'postgres');
   const second=spawnSync(process.execPath,['scripts/restore-backup.mjs',source,destination],{encoding:'utf8',windowsHide:true});assert.notEqual(second.status,0);
   writeFileSync(path.join(source,'router.key'),'corrupt');await assert.rejects(()=>backups.verify(backup.name),/verificación/);
 }));

@@ -1,6 +1,6 @@
 # API de integración de routers
 
-El módulo NestJS `RoutersModule` separa la API del protocolo de cada equipo. Los adaptadores implementan `RouterAdapter` y devuelven un `RouterSnapshot` normalizado. Se almacenan conexiones, credenciales cifradas y resultados de consultas en SQLite o PostgreSQL mediante la migración 2.
+El módulo NestJS `RoutersModule` separa la API del protocolo de cada equipo. Los adaptadores implementan `RouterAdapter` y devuelven un `RouterSnapshot` normalizado. Se almacenan conexiones, credenciales cifradas y resultados de consultas en PostgreSQL mediante la migración 2.
 
 ## Compatibilidad actual
 
@@ -95,7 +95,7 @@ Las operaciones de negocio exigen sesión incluso antes de crear el primer usuar
 
 Las credenciales se cifran con AES-256-GCM. La API nunca devuelve ni el texto plano ni el cifrado. Usa `ROUTER_ENCRYPTION_KEY`, una clave de 32 bytes en base64, compartida entre las instancias del mismo despliegue. No debe estar en una variable `PUBLIC_*`.
 
-En SQLite, si no existe esa variable, se genera una clave local en `DATA_DIR/router.key`. En PostgreSQL es obligatorio configurar la variable antes de guardar credenciales. Respalda la clave junto con la base: sin ella no se pueden descifrar las conexiones. Cambiarla no recifra automáticamente los datos existentes.
+Es obligatorio configurar la variable antes de guardar credenciales. Respalda la clave junto con la base: sin ella no se pueden descifrar las conexiones. Cambiarla no recifra automáticamente los datos existentes.
 
 Generar una clave para un **despliegue nuevo**:
 

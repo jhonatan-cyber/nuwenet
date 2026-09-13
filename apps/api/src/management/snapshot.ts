@@ -32,6 +32,8 @@ export async function readSnapshot(tx: TransactionSQL, settings: SettingsDto, qu
   const taskRows=await tx<{key:string;value:string}[]>`SELECT key,value FROM settings WHERE key LIKE 'task:%'`;
   const tasks=taskRows.map(row=>({name:row.key.slice(5),...JSON.parse(row.value)}));
   const [backlog]=await tx`SELECT COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) pending,COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed,MIN(CASE WHEN status IN ('pending','failed') THEN next_attempt END) oldest FROM commands`;
+  for(const customer of customers)customer.debt=Number(customer.debt);
+  for(const invoice of invoices)invoice.paid_total=Number(invoice.paid_total);
   return {
     today,mode:networkStates.some(n=>n.router_id)?'mixed':'simulated',database,currency:settings.currency,settings,routers,notifyChannel:notificationChannel(),notificationsReady:Boolean(whatsappConfig()&&process.env.WHATSAPP_SEND_ENABLED==='true'),
     automation:{overdueMinutes:settings.overdue_minutes,tasks,queue:{pending:Number(backlog.pending),failed:Number(backlog.failed),oldest:backlog.oldest}},enforcement,

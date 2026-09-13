@@ -82,9 +82,9 @@ Los respaldos se almacenan en `BACKUP_DIR` (por defecto `backups`) y se podan au
 bun -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-**Custodia y rotación.** Guarda la clave de recuperación fuera del servidor (papel o gestor del dueño del sistema), separada de la clave de routers. No la reutilices entre entornos. Para rotarla, configura la nueva clave (los respaldos siguientes usan la nueva), conserva la anterior mientras existan copias que la necesiten y bórrala solo cuando esas copias salgan de retención. En Windows, `mode: 0o600` no basta: restringe con ACL (`icacls BACKUP_DIR /inheritance:r /grant:r Administradores:F`) y protege también `DATA_DIR/router.key`.
+**Custodia y rotación.** Guarda la clave de recuperación fuera del servidor (papel o gestor del dueño del sistema), separada de la clave de routers. No la reutilices entre entornos. Para rotarla, configura la nueva clave (los respaldos siguientes usan la nueva), conserva la anterior mientras existan copias que la necesiten y bórrala solo cuando esas copias salgan de retención. En Windows, `mode: 0o600` no basta: restringe con ACL (`icacls BACKUP_DIR /inheritance:r /grant:r Administradores:F`) y protege también las claves del entorno.
 
-SQLite usa `VACUUM INTO` para obtener una copia consistente sin detener el servidor. La verificación comprueba hashes por streaming, integridad SQLite, claves foráneas y descifrado de las credenciales. Un respaldo incompleto no se publica como válido en el panel. Clave incorrecta, ausente y paquete corrupto se rechazan con mensajes distintos.
+PostgreSQL genera un volcado custom con `pg_dump` y valida su catálogo con `pg_restore --list`. La verificación comprueba hashes y descifra los paquetes cifrados.
 
 Para restaurar **a un directorio nuevo**:
 
@@ -93,7 +93,7 @@ bun run build
 BACKUP_ENCRYPTION_KEY=<clave-de-recuperación> bun scripts/restore-backup.mjs backups/snapshot-NOMBRE data-restaurada
 ```
 
-El script rechaza destinos existentes, descifra y verifica la copia restaurada (no solo el archivo). Para usarla detén el servidor, cambia `DATA_DIR` al directorio restaurado y vuelve a iniciarlo. Si usas `ROUTER_ENCRYPTION_KEY`, debe coincidir con la clave del respaldo. El script no sobrescribe ni cambia la base en uso. Para PostgreSQL el script verifica el paquete y muestra el `pg_restore` hacia una base **nueva**; nunca restaura sobre la base en uso.
+El script rechaza destinos existentes, descifra y verifica el paquete en un directorio nuevo. Después restaura `nuwenet.dump` con `pg_restore --exit-on-error --dbname=BASE_NUEVA archivo.dump`. Configura la conexión a esa base y `ROUTER_ENCRYPTION_KEY` con la clave respaldada antes de iniciar. El script no modifica la base en uso.
 
 **Objetivos.** Pérdida máxima aceptada: 24 h (ajusta `backup_hours` si necesitas menos); recuperación completa en menos de 2 h. Ensaya la restauración en un directorio nuevo y registra el tiempo real; no declares el procedimiento válido sin un simulacro.
 

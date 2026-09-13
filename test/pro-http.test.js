@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -12,7 +13,8 @@ test('Pro HTTP y navegador: portal público aislado, WhatsApp, QR, aprobación y
   const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');
   const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-pro-http-')),origin=`http://127.0.0.1:${port}`;
-  const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,DB_DRIVER:'sqlite',DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups'),HOST:'127.0.0.1',PORT:String(port),SETUP_TOKEN:'',NOTIFY_CHANNEL:'log',WHATSAPP_SEND_ENABLED:'false',NUWENET_PORTAL_IP:'',NUWENET_PUBLIC_URL:''},stdio:['ignore','pipe','pipe'],windowsHide:true});
+  const pg = await createTestDatabase();
+  const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,DB_DRIVER:'postgres',DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups'),HOST:'127.0.0.1',PORT:String(port),SETUP_TOKEN:'',NOTIFY_CHANNEL:'log',WHATSAPP_SEND_ENABLED:'false',NUWENET_PORTAL_IP:'',NUWENET_PUBLIC_URL:''},stdio:['ignore','pipe','pipe'],windowsHide:true});
   let cookie='',browser;
   const api=async(route,body,status=200,authenticated=true)=>{
     const response=await fetch(`${origin}/api/${route}`,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(authenticated?{Cookie:cookie}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(10000)});
@@ -66,6 +68,6 @@ test('Pro HTTP y navegador: portal público aislado, WhatsApp, QR, aprobación y
     assert.deepEqual(errors,[]);
   } finally {
     if(browser)await browser.close();if(server.exitCode===null){const done=once(server,'exit');server.kill();await done;}
-    const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-pro-http-'));rmSync(resolved,{recursive:true,force:true});
+    const resolved=realpathSync(directory);assert.equal(path.dirname(resolved),realpathSync(tmpdir()));assert.ok(path.basename(resolved).startsWith('nuwenet-pro-http-'));await pg.close(); rmSync(resolved,{recursive:true,force:true});
   }
 },60000);

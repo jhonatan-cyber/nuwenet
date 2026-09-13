@@ -86,4 +86,4 @@ Set-Location D:\DEV\nuwenet
 bun scripts/preflight-pro.mjs
 ```
 
-El script lee `.env` sin imprimir secretos, resume la base SQLite sin migrarla y realiza únicamente GET locales. Distingue configuración guardada de variables heredadas por la terminal. No certifica conectividad desde VLAN de residentes ni credenciales de proveedores. Si se cambia a PostgreSQL, se debe hacer una comprobación específica de esa base.
+El script inspecciona PostgreSQL dentro de una transacción de solo lectura y realiza GET locales. Usa las variables de entorno efectivas sin imprimir secretos. El inventario anterior corresponde a la instalación histórica; debe repetirse en la VPS.

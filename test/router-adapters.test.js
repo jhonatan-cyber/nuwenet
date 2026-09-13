@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { MikroTikAdapter } from '../apps/api/dist/routers/adapters/mikrotik.adapter.js';
@@ -218,7 +219,8 @@ test('Credenciales cifradas, concurrencia de consulta y descarte de resultados o
   return runAsSystem(async () => {
   const previous={DATA_DIR:process.env.DATA_DIR,DB_DRIVER:process.env.DB_DRIVER,ROUTER_ENCRYPTION_KEY:process.env.ROUTER_ENCRYPTION_KEY};
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-router-test-'));
-  process.env.DATA_DIR=directory; process.env.DB_DRIVER='sqlite'; process.env.ROUTER_ENCRYPTION_KEY=randomBytes(32).toString('base64');
+  const pg = await createTestDatabase();
+  process.env.DATA_DIR=directory; process.env.DB_DRIVER='postgres'; process.env.ROUTER_ENCRYPTION_KEY=randomBytes(32).toString('base64');
   const db=new DatabaseService();
   let release;
   let started;
@@ -259,7 +261,7 @@ test('Credenciales cifradas, concurrencia de consulta y descarte de resultados o
     const resolved=realpathSync(directory);
     assert.equal(path.dirname(resolved),realpathSync(tmpdir()));
     assert.ok(path.basename(resolved).startsWith('nuwenet-router-test-'));
-    rmSync(resolved,{recursive:true,force:true});
+    await pg.close(); rmSync(resolved,{recursive:true,force:true});
   }
   });
 });

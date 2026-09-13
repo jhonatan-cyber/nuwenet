@@ -6,7 +6,7 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { routerContract } from './router-contract';
 
-test.skipIf(process.env.DB_DRIVER !== 'postgres')('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', async () => {
+test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', async () => {
   const database = `nuwenet_test_${randomUUID().replaceAll('-', '')}`;
   const options = {
     adapter: 'postgres', hostname: process.env.PGHOST || '127.0.0.1',

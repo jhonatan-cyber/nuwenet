@@ -1,3 +1,4 @@
+import { createTestDatabase } from './postgres-fixture.js';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, realpathSync } from 'node:fs';
@@ -11,9 +12,10 @@ import { OverdueScheduler } from '../apps/api/dist/management/scheduler.service.
 
 async function fixture(run, notifier) {
   const directory = mkdtempSync(path.join(tmpdir(), 'nuwenet-tasks-'));
+  const pg = await createTestDatabase();
   const names = ['DB_DRIVER', 'DATA_DIR', 'BACKUP_DIR', 'ROUTER_ENCRYPTION_KEY', 'CURRENCY', 'OVERDUE_CRON_MINUTES'];
   const previous = Object.fromEntries(names.map(key => [key, process.env[key]]));
-  process.env.DB_DRIVER = 'sqlite'; process.env.DATA_DIR = directory; process.env.BACKUP_DIR = path.join(directory, 'backups'); delete process.env.ROUTER_ENCRYPTION_KEY; process.env.CURRENCY = 'Bs'; process.env.OVERDUE_CRON_MINUTES = '0';
+  process.env.DB_DRIVER = 'postgres'; process.env.DATA_DIR = directory; process.env.BACKUP_DIR = path.join(directory, 'backups'); process.env.ROUTER_ENCRYPTION_KEY = pg.env.ROUTER_ENCRYPTION_KEY; process.env.CURRENCY = 'Bs'; process.env.OVERDUE_CRON_MINUTES = '0';
   const db = new DatabaseService(); await db.onModuleInit(); const auth = new AuthService(db);
   const calls = [];
   const routers = {
@@ -22,7 +24,7 @@ async function fixture(run, notifier) {
   };
   const service = new ManagementService(db, routers, notifier || { notify: async () => {} });
   try { await runAsSystem(() => run({ db, auth, service, routers, calls })); }
-  finally { await db.onModuleDestroy(); for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } const resolved = realpathSync(directory); assert.equal(path.dirname(resolved), realpathSync(tmpdir())); assert.ok(path.basename(resolved).startsWith('nuwenet-tasks-')); rmSync(resolved, { recursive: true, force: true }); }
+  finally { await db.onModuleDestroy(); for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } const resolved = realpathSync(directory); assert.equal(path.dirname(resolved), realpathSync(tmpdir())); assert.ok(path.basename(resolved).startsWith('nuwenet-tasks-')); await pg.close(); rmSync(resolved, { recursive: true, force: true }); }
 }
 
 test('C4: un aviso fallido no reintenta la orden de red ya aplicada', () => fixture(async ({ db, service, routers, calls }) => {

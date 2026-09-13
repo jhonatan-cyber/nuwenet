@@ -695,6 +695,7 @@ export class ManagementService {
       const [bank] = await tx`SELECT value FROM settings WHERE key=${'bank:'+customer.building_id}`;
       const settings = await this.settings(tx);
       for(const payment of payments)payment.signature=await this.signReceipt(tx,payment);
+      for(const invoice of invoices)invoice.paid_total=Number(invoice.paid_total);
       return { payments, bank: JSON.parse(bank?.value || '{}'), currency: settings.currency, customer: { apartment: customer.apartment, name: customer.name, status: customer.status, plan_name: customer.plan_name, down: customer.down, up: customer.up, building_name: customer.building_name }, invoices, paymentReports };
     });
   }
