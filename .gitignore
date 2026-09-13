@@ -1,0 +1,10 @@
+data/
+backups/
+*.log
+node_modules/
+dist/
+.astro/
+.env
+.env.*
+!.env.example
+!.env.postgres.example

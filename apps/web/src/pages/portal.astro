@@ -1,0 +1,246 @@
+---
+import '../styles/global.css';
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex,nofollow" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Portal de autoservicio para residentes – consulta tu plan, facturas y reporta pagos." />
+  <title>Mi Portal · NuweNet</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --radius: 12px;
+      --font: 'Outfit', system-ui, sans-serif;
+    }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ===== Header ===== */
+    .portal-header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .portal-logo { font-size: 1.4rem; font-weight: 700; color: var(--accent); letter-spacing: -.5px; }
+    .portal-logo span { color: var(--text); font-weight: 300; }
+
+    /* ===== Loading & Error States ===== */
+    #portal-loading, #portal-error {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 60vh; gap: 1rem; text-align: center;
+    }
+    #portal-error { color: var(--red); }
+    .spinner {
+      width: 48px; height: 48px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== Layout ===== */
+    #portal-content { display: none; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+    /* ===== Info Card ===== */
+    .info-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem;
+    }
+    .info-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.25rem 1.5rem; position: relative; overflow: hidden;
+      transition: border-color .2s;
+    }
+    .info-card:hover { border-color: var(--accent); }
+    .info-card::before {
+      content: ''; position: absolute; inset: 0 0 auto 0;
+      height: 3px; background: linear-gradient(90deg, var(--accent), #79c0ff);
+    }
+    .info-card .label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .4rem; }
+    .info-card .value { font-size: 1.15rem; font-weight: 600; }
+    .badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .2em .75em; border-radius: 999px; font-size: .8rem; font-weight: 500;
+    }
+    .badge-green { background: #3fb95020; color: var(--green); }
+    .badge-red { background: #f8514920; color: var(--red); }
+
+    /* ===== Sections ===== */
+    .section-title {
+      font-size: 1rem; font-weight: 600; color: var(--text);
+      margin: 2rem 0 1rem;
+      display: flex; align-items: center; gap: .6rem;
+    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ===== Table ===== */
+    .table-wrap { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: var(--bg3); }
+    th { padding: .65rem 1rem; text-align: left; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    td { padding: .75rem 1rem; font-size: .875rem; border-top: 1px solid var(--border); }
+    tr:hover td { background: var(--bg3); }
+    .paid { color: var(--green); }
+    .pending-inv { color: var(--yellow); }
+
+    /* ===== Report Form ===== */
+    .report-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.5rem; margin-top: 1rem;
+    }
+    .report-card p { font-size: .875rem; color: var(--muted); margin-bottom: 1.25rem; line-height: 1.6; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+    .field { display: flex; flex-direction: column; gap: .4rem; }
+    label { font-size: .8rem; color: var(--muted); font-weight: 500; }
+    input, textarea {
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: var(--font); font-size: .9rem;
+      padding: .6rem .9rem; width: 100%;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #58a6ff20; }
+    textarea { resize: vertical; min-height: 80px; }
+    .btn-primary {
+      margin-top: 1rem; padding: .65rem 1.75rem;
+      background: linear-gradient(135deg, #1f6feb, #58a6ff);
+      color: #fff; font-family: var(--font); font-size: .9rem; font-weight: 600;
+      border: none; border-radius: 8px; cursor: pointer; width: 100%;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn-primary:hover { opacity: .9; }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .alert { padding: .75rem 1rem; border-radius: 8px; font-size: .875rem; margin-top: .75rem; }
+    .alert-ok  { background: #3fb95020; color: var(--green); border: 1px solid #3fb95040; }
+    .alert-err { background: #f8514920; color: var(--red);   border: 1px solid #f8514940; }
+
+    /* Responsive table */
+    @media (max-width: 520px) {
+      th, td { padding: .4rem; font-size: .8rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="portal-header">
+    <div class="portal-logo">Nuwe<span>Net</span></div>
+    <span id="building-name" style="color:var(--muted);font-size:.9rem;"></span>
+  </header>
+
+  <div id="portal-loading">
+    <div class="spinner"></div>
+    <p style="color:var(--muted)">Cargando tu información…</p>
+  </div>
+
+  <div id="portal-error" style="display:none">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <p id="error-msg">No se pudo cargar tu portal.</p>
+  </div>
+
+  <div id="portal-content">
+    <div id="portal-switch-wrap" style="display:none;align-items:center;gap:.6rem;margin-bottom:1.5rem;flex-wrap:wrap">
+      <label for="portal-dept-switch" style="font-size:.8rem;color:var(--muted);font-weight:600">Departamento</label>
+      <select id="portal-dept-switch" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:.9rem;padding:.55rem .9rem;max-width:100%"></select>
+      <button type="button" id="portal-forget" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:.8rem;padding:.5rem .9rem;cursor:pointer">Olvidar este enlace</button>
+    </div>
+    <!-- Info cards -->
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="label">Departamento</div>
+        <div class="value" id="p-apt">—</div>
+      </div>
+      <div class="info-card">
+        <div class="label">Titular</div>
+        <div class="value" id="p-name">—</div>
+      </div>
+      <div class="info-card">
+        <div class="label">Estado de servicio</div>
+        <div class="value" id="p-status">—</div>
+      </div>
+      <div class="info-card">
+        <div class="label">Plan contratado</div>
+        <div class="value" id="p-plan">—</div>
+      </div>
+      <div class="info-card">
+        <div class="label">Velocidad</div>
+        <div class="value" id="p-speed">—</div>
+      </div>
+    </div>
+
+    <!-- Invoices table -->
+    <div class="section-title">Mis Facturas</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Periodo</th>
+            <th>Vencimiento</th>
+            <th>Monto</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="invoices-body">
+          <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="usage-history"></div>
+    <div class="section-title">Consumo en vivo</div>
+    <p id="p-traffic" aria-live="polite">Consultando…</p><small>Contadores del router desde su último reinicio o reinicio de cola; no representan un total mensual.</small>
+    <div class="section-title">Mis pagos y recibos</div>
+    <label>Papel <select id="ticket-width"><option value="80">80 mm</option><option value="58">58 mm</option></select></label>
+    <div id="payments-list"></div>
+    <div class="report-card" id="bank-details"></div><p id="bank-contact"></p>
+    <!-- Payment reports section -->
+    <div class="section-title">Reportar Transferencia / QR</div>
+    <div class="report-card">
+      <p>¿Pagaste por transferencia bancaria o código QR? Ingresa los datos aquí y el administrador confirmará tu pago a la brevedad.</p>
+      <form id="report-form" autocomplete="off">
+        <div class="form-row">
+          <div class="field">
+            <label for="rep-amount">Monto pagado</label>
+            <input id="rep-amount" type="number" max="1000000" min="0.01" step="0.01" placeholder="0.00" required />
+          </div>
+          <div class="field">
+            <label for="rep-ref">Nº de comprobante / referencia</label>
+            <input id="rep-ref" type="text" maxlength="160" placeholder="Ref. de la transferencia" required />
+          </div>
+        </div>
+        <div class="field" style="margin-top:.75rem">
+          <label for="rep-notes">Notas adicionales (opcional)</label>
+          <textarea id="rep-notes" maxlength="500" placeholder="Ej: transferencia del 10/09, banco XYZ"></textarea>
+        </div>
+        <button type="submit" class="btn-primary" id="rep-btn">Enviar reporte</button>
+        <div id="rep-alert" class="alert" style="display:none"></div>
+      </form>
+
+      <!-- Previous reports -->
+      <div id="reports-list" style="margin-top:1.5rem"></div>
+    </div>
+  </div>
+
+  <footer style="text-align:center;padding:2rem;color:var(--muted);font-size:.8rem;">
+    Portal del residente · NuweNet
+  </footer>
+
+  <script>
+    import '../scripts/portal.js';
+  </script>
+</body>
+</html>

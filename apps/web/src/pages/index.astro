@@ -1,0 +1,44 @@
+---
+import DashboardLayout from '../layouts/DashboardLayout.astro';
+import PaymentDialog from '../components/PaymentDialog.astro';
+import AccountMenu from '../components/AccountMenu.astro';
+import AccountDialog from '../components/AccountDialog.astro';
+import PlansPanel from '../components/PlansPanel';
+import CustomersPanel from '../components/CustomersPanel';
+import BillingPanel from '../components/BillingPanel';
+import OperationsPanel from '../components/OperationsPanel';
+import RoutersPanel from '../components/RoutersPanel';
+import CustomerActions from '../components/CustomerActions';
+---
+<DashboardLayout>
+  <main>
+    <header class="floating-navbar">
+      <div class="navbar-leading">
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Abrir navegación" aria-expanded="false" aria-controls="main-sidebar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <span class="breadcrumb"><span class="building-name">Mi edificio <span class="slash">/</span></span><span id="breadcrumb">Resumen</span></span>
+      </div>
+      <div class="navbar-actions">
+        <select id="building-select" class="building-select" aria-label="Edificio activo" hidden></select>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Cambiar tema"><span class="theme-icon" aria-hidden="true">☀</span></button>
+        <AccountMenu />
+      </div>
+    </header>
+    <section class="content">
+      <div class="notice" id="network-notice" hidden>
+        Consulta el estado de cada orden en Control de acceso.
+      </div>
+      <div id="view"></div>
+      <PlansPanel client:load />
+      <CustomersPanel client:load />
+      <BillingPanel client:load />
+      <OperationsPanel client:load />
+      <RoutersPanel client:load />
+    </section>
+  </main>
+  <PaymentDialog />
+  <AccountDialog />
+  <CustomerActions client:load />
+</DashboardLayout>
+<script>
+  import '../scripts/dashboard.js';
+</script>

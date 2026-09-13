@@ -1,0 +1,27 @@
+{
+  "name": "@nuwenet/api",
+  "version": "0.2.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "bun --bun run tsc -p tsconfig.json",
+    "check": "bun --bun run tsc -p tsconfig.json --noEmit",
+    "dev": "bun --bun run concurrently -k -n typescript,server \"bun --bun run tsc -p tsconfig.json --watch\" \"bun --watch dist/main.js\"",
+    "start": "bun dist/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "playwright": "^1.63.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

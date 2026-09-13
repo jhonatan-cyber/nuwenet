@@ -1,0 +1,113 @@
+﻿{
+  "checked_at": "2026-09-11T21:06:24.988Z",
+  "config_file": "D:\\DEV\\nuwenet\\.env",
+  "mode": "read-only",
+  "config": {
+    "database": "sqlite",
+    "host": "127.0.0.1",
+    "port": "3000",
+    "notify_channel": "whatsapp",
+    "whatsapp_send_enabled": false,
+    "presence": {
+      "NUWENET_PORTAL_IP": false,
+      "NUWENET_PUBLIC_URL": false,
+      "WHATSAPP_TOKEN": false,
+      "WHATSAPP_PHONE_NUMBER_ID": false,
+      "WHATSAPP_API_VERSION": false,
+      "WHATSAPP_TEMPLATE": false,
+      "WHATSAPP_LANGUAGE": false,
+      "WHATSAPP_APP_SECRET": false,
+      "WHATSAPP_VERIFY_TOKEN": false
+    }
+  },
+  "shell_overrides": {
+    "PORT": {
+      "file": "3000",
+      "shell": "0"
+    }
+  },
+  "local_ipv4": [
+    "192.168.0.2"
+  ],
+  "database": {
+    "file": "D:\\DEV\\nuwenet\\data\\nuwenet.sqlite",
+    "migration": 17,
+    "buildings": [
+      {
+        "id": 1,
+        "name": "Edificio Norte",
+        "central_router_id": null,
+        "disabled": 0
+      }
+    ],
+    "routers": [
+      {
+        "id": 1,
+        "adapter": "arris-touchstone",
+        "host": "192.168.0.1",
+        "port": 80,
+        "protocol": "http",
+        "building_id": 1,
+        "status": "connected",
+        "disabled": 0,
+        "last_checked": "2026-09-10T21:11:44.407Z",
+        "credentials_present": 1
+      }
+    ],
+    "banks": [],
+    "customers": {
+      "total": 0,
+      "with_phone": 0
+    },
+    "notifications": [],
+    "receipt_key_present": true
+  },
+  "http": [
+    {
+      "origin": "http://127.0.0.1:3000",
+      "route": "/api/auth/status",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:3000",
+      "route": "/portal/",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:3000",
+      "route": "/corte/",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:4321",
+      "route": "/api/auth/status",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:4321",
+      "route": "/portal/",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:4321",
+      "route": "/corte/",
+      "status": 200
+    }
+  ],
+  "blockers": [
+    "HOST solo permite acceso local; falta una interfaz accesible para residentes.",
+    "Falta configurar IP y URL del portal de corte.",
+    "No hay MikroTik habilitado registrado.",
+    "Edificio 1: falta asignar MikroTik central.",
+    "Edificio 1: faltan datos bancarios y/o QR.",
+    "El envío WhatsApp está deshabilitado.",
+    "Falta WHATSAPP_TOKEN.",
+    "Falta WHATSAPP_PHONE_NUMBER_ID.",
+    "Falta WHATSAPP_API_VERSION.",
+    "Falta WHATSAPP_TEMPLATE.",
+    "Falta WHATSAPP_LANGUAGE.",
+    "Falta WHATSAPP_APP_SECRET.",
+    "Falta WHATSAPP_VERIFY_TOKEN.",
+    "No hay departamentos vigentes para validar el flujo de residente."
+  ]
+}

@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+
+export async function routerContract(request) {
+  const adapters = await request('routers/adapters');
+  assert.equal(adapters.length, 3);
+  assert.equal(adapters.find(adapter => adapter.id === 'mikrotik-rest').capabilities.suspend, true);
+  assert.equal(adapters.find(adapter => adapter.id === 'mikrotik-rest').capabilities.speed_limit, true);
+  assert.equal(adapters.find(adapter => adapter.id === 'arris-touchstone').capabilities.suspend, true);
+  assert.equal(adapters.find(adapter => adapter.id === 'arris-touchstone').capabilities.speed_limit, false);
+  assert.equal(adapters.find(adapter => adapter.id === 'openwrt-ubus').capabilities.suspend, false);
+  const payload = { name:'Router de prueba', adapter:'mikrotik-rest', host:'192.168.99.1', port:443, protocol:'https', username:'fixture-user', password:'fixture-only-secret' };
+  let result = await request('routers', payload);
+  const id = result.routers.at(-1).id;
+  assert.equal(result.routers.at(-1).status, 'untested');
+  assert.equal(result.routers.at(-1).credentials_saved, true);
+  assert.equal(JSON.stringify(result).includes(payload.password), false);
+  assert.equal(JSON.stringify(result).includes(payload.username), false);
+  assert.equal('credentials' in result.routers.at(-1), false);
+  await request('routers', payload, 409);
+  await request('routers', { ...payload, host:'127.0.0.1' }, 400);
+  await request('routers', { ...payload, host:'169.254.169.254' }, 400);
+  await request('routers', { ...payload, host:'8.8.8.8' }, 400);
+  await request('routers', { ...payload, adapter:'universal' }, 400);
+  await request(`routers/${id}/actions`, { action:'suspend' }, 400);
+  await request(`routers/${id}/actions`, { action:'speed_limit', ip:'192.168.99.10' }, 400);
+  await request(`routers/${id}/actions`, { action:'firewall', ip:'192.168.99.10' }, 400);
+  await request(`routers/${id}/actions`, { action:'parental_control', ip:'192.168.99.10' }, 400);
+  const { username, password, ...update } = payload;
+  result = await request(`routers/${id}/update`, { ...update, name:'Router actualizado' });
+  assert.equal(result.routers.find(router=>router.id === id).name, 'Router actualizado');
+  assert.equal(result.routers.find(router=>router.id === id).credentials_saved, true);
+  const detail = await request(`routers/${id}`);
+  assert.deepEqual(detail.checks, []);
+  await request(`routers/${id}/remove`, {});
+  await request(`routers/${id}`, undefined, 404);
+  // Sin routers registrados, asignar IP no intenta llamadas de red (queda simulado).
+  const state = await request('state');
+  const planId = state.plans[0].id;
+  let customers = await request('customers', { apartment:'CR-102', name:'Contrato IP', plan_id: planId, ip:'192.168.99.50' });
+  const customerId = customers.customers.find(customer => customer.apartment === 'CR-102').id;
+  assert.equal(customers.customers.find(customer => customer.apartment === 'CR-102').ip, '192.168.99.50');
+  await request('customers', { apartment:'CR-103', name:'IP duplicada', plan_id: planId, ip:'192.168.99.50' }, 400);
+  await request('customers', { apartment:'CR-104', name:'IP pública', plan_id: planId, ip:'8.8.8.8' }, 400);
+  customers = await request('customers/ip', { id: customerId, ip:'192.168.99.51' });
+  assert.equal(customers.customers.find(customer => customer.apartment === 'CR-102').ip, '192.168.99.51');
+  await request('customers/ip', { id: customerId, ip:'8.8.8.8' }, 400);
+  await request('customers/ip', { id: 999999, ip:'192.168.99.60' }, 400);
+}

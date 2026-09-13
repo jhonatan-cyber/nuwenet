@@ -1,0 +1,37 @@
+---
+const sections = [
+  { id: 'overview', icon: '◫', label: 'Resumen' },
+  { id: 'buildings', icon: '▥', label: 'Edificios y accesos' },
+  { id: 'customers', icon: '▦', label: 'Departamentos' },
+  { id: 'plans', icon: '◈', label: 'Planes de internet' },
+  { id: 'billing', icon: '▤', label: 'Mensualidades y pagos' },
+  { id: 'network', icon: '◎', label: 'Control de acceso' },
+  { id: 'routers', icon: '⌘', label: 'Routers' },
+  { id: 'activity', icon: '◷', label: 'Actividad' },
+  { id: 'payments', icon: '↗', label: 'Historial de pagos' },
+  { id: 'settings', icon: '⚙', label: 'Edificio y automatización' },
+  { id: 'users', icon: '♙', label: 'Usuarios y permisos' },
+  { id: 'backups', icon: '▣', label: 'Respaldos' },
+  { id: 'audit', icon: '≡', label: 'Auditoría' },
+];
+---
+<aside id="main-sidebar" class="floating-sidebar">
+  <div class="sidebar-head">
+    <a class="brand" href="/">◈ <span>nuwe<strong>net</strong></span></a>
+  </div>
+  <div class="sidebar-scroll">
+    <p class="nav-label">ESPACIO DE TRABAJO</p>
+    <nav aria-label="Navegación principal">
+      {sections.map(section => (
+        <button data-page={section.id} class:list={{ selected: section.id === 'overview' }}>
+          {section.icon} &nbsp; {section.label}
+        </button>
+      ))}
+    </nav>
+  </div>
+  <div class="sidebar-bottom">
+    <span class="dot"></span> Entorno local
+    <small>NuweNet · Versión inicial</small>
+  </div>
+</aside>
+<button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Cerrar navegación" hidden></button>

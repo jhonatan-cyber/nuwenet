@@ -1,0 +1,4 @@
+@layer legacy, theme, base, components, utilities;
+@import './global.css' layer(legacy);
+@import './shell.css' layer(legacy);
+@import './ui.css';
