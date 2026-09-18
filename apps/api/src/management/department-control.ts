@@ -2,11 +2,12 @@ import { BadRequestException } from '@nestjs/common';
 import type { DatabaseService } from '../database/database.service';
 import type { RoutersService } from '../routers/routers.service';
 import type { RouterSnapshot } from '../routers/router.types';
+import { uuidv7 } from '../common/uuid';
 import { validateRouterHost } from '../routers/router-network';
 
 // The worker calls this only after checking the customer's building and central.
-export async function controlDepartment(db: DatabaseService, routers: RoutersService, customerId:number, job:{routerId:number|null;ip:string|null;status:string;down:number;up:number;previous?:{routerId:number;ip:string}}) {
-  const links=await db.read(tx=>tx<{mac:string;router_id:number}[]>`SELECT mac,router_id FROM customer_devices WHERE customer_id=${customerId}`);
+export async function controlDepartment(db: DatabaseService, routers: RoutersService, customerId:string, job:{routerId:string|null;ip:string|null;status:string;down:number;up:number;previous?:{routerId:string;ip:string}}) {
+  const links=await db.read(tx=>tx<{mac:string;router_id:string}[]>`SELECT mac,router_id FROM customer_devices WHERE customer_id=${customerId}`);
   let clients:NonNullable<RouterSnapshot['clients']>=[];
   if(job.routerId && links.length){
     if(links.some(l=>l.router_id!==job.routerId))throw new BadRequestException('Hay dispositivos vinculados a un router que no es el central.');
@@ -20,7 +21,7 @@ export async function controlDepartment(db: DatabaseService, routers: RoutersSer
     const candidates=clients.filter(c=>c.mac?.toUpperCase()===link.mac && (!c.status||['bound','active','reported','connected'].includes(c.status.toLowerCase())));
     for(const client of candidates)if(client.ip && !client.ip.includes(':'))desired.add(client.ip);
   }
-  const prior=await db.read(tx=>tx<{router_id:number;ip:string}[]>`SELECT router_id,ip FROM customer_network_targets WHERE customer_id=${customerId}`);
+  const prior=await db.read(tx=>tx<{router_id:string;ip:string}[]>`SELECT router_id,ip FROM customer_network_targets WHERE customer_id=${customerId}`);
   if(job.previous && !prior.some(p=>p.router_id===job.previous!.routerId&&p.ip===job.previous!.ip))prior.push({router_id:job.previous.routerId,ip:job.previous.ip});
   await db.write(async tx=>{
     const [customer]=await tx`SELECT building_id FROM customers WHERE id=${customerId}`;
@@ -40,7 +41,7 @@ export async function controlDepartment(db: DatabaseService, routers: RoutersSer
   for(const routerId of new Set(prior.map(p=>p.router_id)))if(routerId!==job.routerId)await routers.departmentSpeed(routerId,customerId,[],job.down,job.up);
   if(job.routerId){
     // Remember intended writes before touching hardware, including partial failures.
-    await db.write(async tx=>{for(const ip of desired)await tx`INSERT INTO customer_network_targets(router_id,ip,customer_id) VALUES (${job.routerId},${ip},${customerId}) ON CONFLICT(router_id,ip) DO NOTHING`;});
+    await db.write(async tx=>{for(const ip of desired)await tx`INSERT INTO customer_network_targets(id,router_id,ip,customer_id) VALUES (${uuidv7()},${job.routerId},${ip},${customerId}) ON CONFLICT(router_id,ip) DO NOTHING`;});
     for(const ip of desired)await routers.action(job.routerId,{action:job.status==='active'?'reactivate':'suspend',ip},true);
     await routers.departmentSpeed(job.routerId,customerId,[...desired],job.down,job.up);
   }

@@ -7,6 +7,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { uuidv7 } from '../apps/api/dist/common/uuid.js';
 
 test('edificios: acceso aislado, actividad privada y formularios en el edificio seleccionado', async () => {
   const directory=mkdtempSync(path.join(tmpdir(),'nuwenet-isolation-'));
@@ -26,7 +27,7 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     const [first]=await api('buildings');
     const second=await api('buildings',{name:'Edificio B',address:'Calle B'});
     const a=first.id,b=second.id;
-    for(const bid of [a,b])await api('routers',{name:`Router ${bid}`,adapter:'mikrotik-rest',host:`192.168.${bid}.1`,port:443,protocol:'https',username:'fixture',password:'fixture',building_id:bid});
+    for(const [index,bid] of [a,b].entries())await api('routers',{name:`Router ${bid}`,adapter:'mikrotik-rest',host:`192.168.${index+1}.1`,port:443,protocol:'https',username:'fixture',password:'fixture',building_id:bid});
     const {routers}=await api('routers');const routerA=routers.find(r=>r.building_id===a),routerB=routers.find(r=>r.building_id===b);
     await api('auth/users',{username:'admin@example.com',password:'fixture-password',role:'admin',ci:'1234567',first_name:'Test',last_name:'Admin',address:'Calle',phone:'70000000'});
     const user=(await api('auth/users')).find(u=>u.username==='admin@example.com');
@@ -34,8 +35,7 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     const db=pg.connect();
     try {
       for(const bid of [null,a,b]){
-        await db.unsafe('INSERT INTO events(message,building_id) VALUES ($1,$2)',[`event-${bid}`,bid]);
-        await db.unsafe("INSERT INTO notifications(channel,target,message,created_at,building_id) VALUES ('log',$1,$2,$3,$4)",[`phone-${bid}`,`notice-${bid}`,new Date().toISOString(),bid]);
+        await db.unsafe('INSERT INTO events(id,message,building_id) VALUES ($1,$2,$3)',[uuidv7(),`event-${bid}`,bid]);
       }
     } finally {await db.close();}
     await api('auth/login',{username:'admin@example.com',password:'fixture-password'});const adminCookie=cookie;
@@ -45,7 +45,6 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     const scoped=await api('state');
     assert.ok(scoped.events.some(e=>e.message===`event-${a}`));
     assert.ok(scoped.events.every(e=>e.building_id===a));
-    assert.deepEqual(scoped.notifications.map(n=>n.target),[`phone-${a}`]);
     cookie=ownerCookie;assert.ok((await api('state')).events.some(e=>e.message==='event-null'));await api('audit');
     await api('buildings/assign',{user_id:user.id,building_id:b});
     cookie=adminCookie;
@@ -63,10 +62,10 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     await page.locator('[data-action="new-plan"]').click();
     await page.locator('#plan-form [name="name"]').fill('Plan B');
     await page.locator('#plan-form [name="down"]').fill('50');await page.locator('#plan-form [name="up"]').fill('20');await page.locator('#plan-form [name="price"]').fill('100');
-    await page.locator('#plan-form button[type="submit"]').click();await page.locator('#plan-form').waitFor({state:'hidden'});
+    await page.getByRole('dialog').locator('button[type="submit"]').click();await page.locator('#plan-form').waitFor({state:'hidden'});
     await page.locator('nav [data-page="customers"]').click();await page.getByRole('button',{name:'Agregar departamento',exact:true}).click();
     await page.locator('#customer-form [name="apartment"]').fill('B-101');await page.locator('#customer-form [name="name"]').fill('Titular B');
-    await page.locator('#customer-form button[type="submit"]').click();
+    await page.getByRole('dialog').locator('button[type="submit"]').click();
     // B5: el enlace completo se muestra una sola vez tras crear; se copia y se cierra.
     await page.getByRole('heading',{name:/nica vez/}).waitFor();
     assert.match(await page.locator('[data-portal-link]').inputValue(),/\/portal\?token=[\w-]{43}/);
@@ -97,6 +96,7 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     await api(`routers/${routerB.id}/devices`,{mac,customer_id:customerA.id},400);
     await api('backups',undefined,403);
     await page.locator('nav [data-page="routers"]').click();
+    await page.getByRole('button',{name:`Ver router Router ${b}`,exact:true}).click();
     await page.getByRole('button',{name:'Vincular departamento'}).first().click();
     await page.getByRole('dialog').getByLabel('Departamento').selectOption(String(stateB.customers[0].id));
     await page.getByRole('button',{name:'Guardar',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
@@ -108,12 +108,19 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     assert.equal((await api(`state?building_id=${b}`)).enforcement.state,'error');
     await api(`routers/${routerB.id}/devices`,{mac,customer_id:null});
     assert.equal((await api(`routers/${routerB.id}`)).router.devices.length,0);
+    // Mismo departamento en otro edificio: permitido y distinguible.
+    await api('customers',{name:'Titular B',apartment:'A-101',building_id:b});
+    assert.equal((await api(`state?building_id=${b}`)).customers[0].apartment,'A-101');
+    // Mismo departamento en el mismo edificio: rechazado.
+    await api('customers',{name:'Duplicado',apartment:'A-101',building_id:a},400);
+    // Plan de otro edificio: rechazado.
+    await api('customers',{name:'Cruce',apartment:'A-102',plan_id:planA.id,building_id:b},400);
     // Owner can reach all previously hidden operational pages.
     await context.addCookies([{name:'nuwenet_session',value:ownerCookie.split('=')[1],url:origin}]);
     const ownerPage=await context.newPage();
     const errors=[];ownerPage.on('pageerror',e=>errors.push(e.message));
     for(const section of ['settings','backups','audit']){
-      await ownerPage.goto(`${origin}/#${section}`);await ownerPage.locator(`nav [data-page="${section}"].selected`).waitFor();
+      await ownerPage.goto(`${origin}/#${section}`);await ownerPage.locator(`nav [data-page="${section}"][data-selected="true"]`).waitFor();
       if(section==='settings'){await ownerPage.locator('#operations-form').waitFor();assert.equal(await ownerPage.locator('#operations-form [name="central_router_id"]').count(),0);}
     }
     assert.deepEqual(errors,[]);

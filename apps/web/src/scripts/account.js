@@ -1,4 +1,4 @@
-import { applyTheme, setTheme, openAccount, getSnapshot, closeAccount } from '../lib/account-store';
+import { applyTheme, setTheme, openAccount, closeAccount, getSnapshot } from '../lib/account-store';
 const trigger = document.querySelector('#account-trigger');
 const menu = document.querySelector('#account-dropdown');
 const sidebar = document.querySelector('#main-sidebar');
@@ -7,13 +7,7 @@ const backdrop = document.querySelector('#sidebar-backdrop');
 let user = null;
 const initial = value => Array.from(value || 'A')[0].toUpperCase();
 export function syncThemeControls() { applyTheme(); }
-export { setTheme };
-export function cycleTheme() {
-  const theme=getSnapshot().preferences.theme;
-  setTheme(theme==='light'?'dark':theme==='dark'?'system':'light');
-  const t=document.querySelector('#toast');
-  if(t){t.textContent='Tema: '+({light:'Claro',dark:'Oscuro',system:'Sistema'}[getSnapshot().preferences.theme]);t.style.display='block';clearTimeout(cycleTheme.timer);cycleTheme.timer=setTimeout(()=>t.style.display='none',2000);}
-}
+export { setTheme, getSnapshot };
 applyTheme();
 
 function closeMenu(focus=false) { menu.hidden=true;trigger.setAttribute('aria-expanded','false');if(focus)trigger.focus(); }
@@ -36,8 +30,8 @@ menu.addEventListener('keydown',event=>{
     items[next]?.focus();
   }
 });
-document.addEventListener('click',event=>{if(!event.target.closest('.account-menu'))closeMenu();});
-document.addEventListener('focusin',event=>{if(!event.target.closest('.account-menu'))closeMenu();});
+document.addEventListener('click',event=>{if(!event.target.closest('[data-account-menu]'))closeMenu();});
+document.addEventListener('focusin',event=>{if(!event.target.closest('[data-account-menu]'))closeMenu();});
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'){
     if(!menu.hidden){event.preventDefault();closeMenu(true);}
@@ -47,15 +41,15 @@ document.addEventListener('keydown',event=>{
 
 function setSidebar(open,restoreFocus=false) {
   document.body.classList.toggle('sidebar-open',open);
+  sidebar.dataset.open=String(open);
   backdrop.hidden=!open;
   toggle.setAttribute('aria-expanded',String(open));
   toggle.setAttribute('aria-label',open?'Cerrar navegación':'Abrir navegación');
-  if(open){closeMenu();sidebar.querySelector('nav button.selected,nav button')?.focus();}
+  if(open){closeMenu();sidebar.querySelector('nav [data-selected="true"],nav button')?.focus();}
   else if(restoreFocus)toggle.focus();
 }
 toggle.addEventListener('click',()=>setSidebar(!document.body.classList.contains('sidebar-open')));
 backdrop.addEventListener('click',()=>setSidebar(false,true));
-document.querySelector('#theme-toggle')?.addEventListener('click',()=>cycleTheme());
 sidebar.addEventListener('click',event=>{if(event.target.closest('[data-page]'))setSidebar(false);});
 const mobile=window.matchMedia('(max-width:700px)');
 mobile.addEventListener('change',()=>setSidebar(false));

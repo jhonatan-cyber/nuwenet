@@ -23,6 +23,12 @@ export class CreateUserDto extends SetupDto {
 export class UpdateUserDto {
   @IsIn(['superadmin', 'admin']) role!: string;
   @IsBoolean() disabled!: boolean;
+  @IsOptional() @IsEmail() @MaxLength(160) username?: string;
+  @IsOptional() @IsString() @Matches(/\S/) @MaxLength(40) ci?: string;
+  @IsOptional() @IsString() @Matches(/\S/) @MaxLength(80) first_name?: string;
+  @IsOptional() @IsString() @Matches(/\S/) @MaxLength(80) last_name?: string;
+  @IsOptional() @IsString() @Matches(/\S/) @MaxLength(200) address?: string;
+  @IsOptional() @IsString() @MaxLength(80) phone?: string;
 }
 export class ChangePasswordDto {
   @IsString() @MinLength(1) @MaxLength(256) current_password!: string;

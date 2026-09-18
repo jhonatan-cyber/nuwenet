@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createTestSchema } from './postgres-fixture.js';
 import { routerContract } from './router-contract';
+import { uuidv7 } from '../apps/api/dist/common/uuid.js';
 
 test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', async () => {
   const pg = await createTestSchema();
@@ -12,7 +13,7 @@ test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', asy
   const port = 34000 + Math.floor(Math.random() * 5000);
   async function start(listenPort) {
     const child = spawn(process.execPath, ['apps/api/dist/main.js'], {
-      env: { ...process.env, SETUP_TOKEN: '', DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(listenPort), NOTIFY_CHANNEL:'log', WHATSAPP_SEND_ENABLED:'false', NUWENET_PORTAL_IP:'', NUWENET_PUBLIC_URL:'', OVERDUE_CRON_MINUTES:'0' },
+      env: { ...process.env, SETUP_TOKEN: '', DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(listenPort), NUWENET_PORTAL_IP:'', NUWENET_PUBLIC_URL:'', OVERDUE_CRON_MINUTES:'0' },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -48,7 +49,7 @@ test('PostgreSQL: transacciones, concurrencia, validaciones y persistencia', asy
     state = await request('customers', { apartment: '101', name: 'Ana', plan_id: plan });
     const customer = state.customers[0].id;
     await request('customers', { apartment: '101', name: 'Duplicado', plan_id: plan }, 400);
-    await request('customers', { apartment: '102', name: 'Inválido', plan_id: 999999 }, 400);
+    await request('customers', { apartment: '102', name: 'Inválido', plan_id: uuidv7() }, 400);
     await request('billing', { period: '2020-01', due: '2020-02-31' }, 400);
     await Promise.all(Array.from({ length: 8 }, (_, i) => request('billing', { period: '2020-01', due: '2020-01-10' }, 200, port + i % 2)));
     state = await request('billing', { period: '2020-02', due: '2020-02-10' });

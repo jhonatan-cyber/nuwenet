@@ -51,10 +51,10 @@ test('auth, abonos parciales, moneda y modo mixto', async () => {
     assert.equal(s.currency, 'Bs');
     assert.equal(s.automation.overdueMinutes, 0);
     assert.equal(s.mode, 'simulated');
-    assert.ok(Array.isArray(s.notifications));
     assert.equal((await request('auth/me')).authenticated, true);
     // Registrar un MikroTik (sin contactarlo) activa el modo mixto.
-    await request('routers', { name: 'Central', adapter: 'mikrotik-rest', host: '192.168.99.1', port: 443, protocol: 'https', username: 'u', password: 'p' });
+    // El edificio es explícito: sin building_id el router queda sin asignar.
+    await request('routers', { name: 'Central', adapter: 'mikrotik-rest', host: '192.168.99.1', port: 443, protocol: 'https', username: 'u', password: 'p', building_id: s.buildings[0].id });
     s = await request('state');
     assert.equal(s.mode, 'simulated', 'Registrar un router no lo convierte en central');
     s = await request('buildings/central', { building_id:s.buildings[0].id, central_router_id: s.routers[0].id });
@@ -62,19 +62,21 @@ test('auth, abonos parciales, moneda y modo mixto', async () => {
     assert.equal(s.enforcement.enforcing, true);
     // Flujo con abono parcial.
     await request('plans', { name: 'Hogar', down: 50, up: 20, price: 100 });
-    await request('customers', { apartment: '101', name: 'Ana', plan_id: 1 });
+    const planId = (await request('state')).plans[0].id;
+    await request('customers', { apartment: '101', name: 'Ana', plan_id: planId });
     await request('billing', { period: '2020-01', due: '2020-01-10' });
     s = await request('state');
     assert.equal(s.customers.find(c => c.apartment === '101').debt, 10000);
-    s = await request('pay', { id: 1, amount: 30 });
-    const invoice = s.invoices.find(i => i.id === 1);
+    const invoiceId = s.invoices[0].id;
+    s = await request('pay', { id: invoiceId, amount: 30 });
+    const invoice = s.invoices.find(i => i.id === invoiceId);
     assert.equal(invoice.paid_at, null);
     assert.equal(invoice.paid_total, 3000);
     assert.equal(s.customers.find(c => c.apartment === '101').debt, 7000);
     assert.ok(s.events.some(e => e.message.startsWith('Abono registrado:')));
-    await request('pay', { id: 1, amount: 999 }, 400);
-    s = await request('pay', { id: 1, amount: 70 });
-    assert.ok(s.invoices.find(i => i.id === 1).paid_at);
+    await request('pay', { id: invoiceId, amount: 999 }, 400);
+    s = await request('pay', { id: invoiceId, amount: 70 });
+    assert.ok(s.invoices.find(i => i.id === invoiceId).paid_at);
     assert.equal(s.events.filter(e => e.message.startsWith('Pago registrado:')).length, 1);
     await request('auth/users',{username:'norte@correo.com',password:'fixture-password',role:'admin',ci:'1234567',first_name:'Norte',last_name:'Admin',address:'Calle 1',phone:'70000001'});
     const createdUsers=await request('auth/users');
@@ -82,12 +84,13 @@ test('auth, abonos parciales, moneda y modo mixto', async () => {
     assert.equal(norte.first_name,'Norte');
     await request('buildings/assign',{user_id:norte.id,building_id:s.active_building_id||s.buildings[0].id});
     assert.ok((await request('audit')).some(entry=>entry.action.includes('/api/pay')&&entry.username==='admin'));
+    assert.ok((await request('audit')).some(entry=>entry.action.includes(`/api/pay id=${invoiceId}`)), 'La auditoría registra el id UUID de la operación, no un número');
     await request('auth/login',{username:'norte@correo.com',password:'fixture-password'});
     await request('auth/users',undefined,403);
     await request('settings',s.settings,403);
     await request('buildings',{name:'Hack'},403);
     await request('routers',{name:'Hack',adapter:'mikrotik-rest',host:'192.168.99.9',port:443,protocol:'https',username:'u',password:'p'},403);
-    await request('access',{id:1,status:'suspended'});
+    await request('access',{id:(await request('state')).customers[0].id,status:'suspended'});
     await request('routers');
     await request('state');
     await request('auth/login',{username:'admin',password:'admin1234'});

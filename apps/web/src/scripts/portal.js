@@ -1,6 +1,7 @@
 import {usageMarkup,mountUsage} from './usage.js';
-import {receiptHtml,printReceipt,bankHtml,updateBankQr} from './receipt.js';
-const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import {receiptHtml,printReceipt} from './receipt.js';
+import { escape } from '../lib/html.js';
+import { badge, badgeSuccess, badgeDestructive, buttonOutline, tableCell } from '../lib/shadcn.js';
 let portalData;
 // portal.js — Lógica del Portal del Residente
 // Acceso mediante URL pública: /portal?token=XXXX
@@ -86,25 +87,13 @@ $('portal-forget')?.addEventListener('click', () => {
   }
 });
 
-async function apiGet(path) {
-  const res = await fetch(`/api${path}`, { credentials: 'same-origin' });
+async function apiGet(path, signal) {
+  const res = await fetch(`/api${path}`, { credentials: 'same-origin', signal });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || body.message || `Error ${res.status}`);
   }
   return res.json();
-}
-
-async function apiPost(path, data) {
-  const res = await fetch(`/api${path}`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || body.message || `Error ${res.status}`);
-  return body;
 }
 
 function fmtMoney(cents, currency = '') {
@@ -120,38 +109,22 @@ function fmtDate(s) {
 function renderInvoices(invoices) {
   const tbody = $('invoices-body');
   if (!invoices || invoices.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem">Sin facturas registradas.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="5" class="${tableCell} text-center text-muted-foreground">Sin facturas registradas.</td></tr>`;
     return;
   }
   tbody.innerHTML = invoices.map(inv => {
     const paid = !!inv.paid_at;
     const statusLabel = paid
-      ? `<span class="badge badge-green">✓ Pagado</span>`
-      : `<span class="badge badge-red">Pendiente</span>`;
+      ? `<span class="${badgeSuccess}">✓ Pagado</span>`
+      : `<span class="${badgeDestructive}">Pendiente</span>`;
     return `<tr>
-      <td style="color:var(--muted)">#${inv.id}</td>
-      <td style="font-weight:500">${escape(inv.period)}</td>
-      <td class="${paid ? 'paid' : 'pending-inv'}">${fmtDate(inv.due)}</td>
-      <td>${fmtMoney(inv.amount,portalData.currency)}<small> · Saldo ${fmtMoney(inv.amount-Number(inv.paid_total),portalData.currency)}</small></td>
-      <td>${statusLabel}</td>
+      <td class="${tableCell} text-muted-foreground">#${inv.id}</td>
+      <td class="${tableCell} font-medium">${escape(inv.period)}</td>
+      <td class="${tableCell} ${paid ? 'text-success' : 'text-destructive'}">${fmtDate(inv.due)}</td>
+      <td class="${tableCell}">${fmtMoney(inv.amount,portalData.currency)}<small class="block text-sm text-muted-foreground">Saldo ${fmtMoney(inv.amount-Number(inv.paid_total),portalData.currency)}</small></td>
+      <td class="${tableCell}">${statusLabel}</td>
     </tr>`;
   }).join('');
-}
-
-function renderReports(reports) {
-  const el = $('reports-list');
-  if (!reports || reports.length === 0) { el.innerHTML = ''; return; }
-  const colors = { pending: 'var(--yellow)', approved: 'var(--green)', rejected: 'var(--red)' };
-  const labels = { pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado' };
-  el.innerHTML = `
-    <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Tus reportes anteriores</p>
-    <div style="display:flex;flex-direction:column;gap:.5rem">
-      ${reports.map(r => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:.65rem 1rem;background:var(--bg3);border-radius:8px;font-size:.85rem">
-          <span>Ref. <strong>${escape(r.reference)}</strong> · ${fmtMoney(r.amount,portalData.currency)}</span>
-          <span style="color:${colors[r.status] || 'var(--muted)'}">● ${labels[r.status] || r.status}</span>
-        </div>`).join('')}
-    </div>`;
 }
 
 async function load() {
@@ -165,12 +138,9 @@ async function load() {
     const data = await apiGet(`/portal?token=${encodeURIComponent(TOKEN)}`);
     portalData=data;
     $('usage-history').innerHTML=usageMarkup();
-    mountUsage($('usage-history').querySelector('.usage-widget'),month=>apiGet(`/portal/usage?token=${encodeURIComponent(TOKEN)}&month=${encodeURIComponent(month)}`));
-    const { customer, invoices, paymentReports } = data;
-    $('bank-details').innerHTML=bankHtml(data.bank,invoices.reduce((n,i)=>n+i.amount-Number(i.paid_total),0),data.currency);
-    void updateBankQr($('bank-details'),data.bank,invoices.reduce((n,i)=>n+i.amount-Number(i.paid_total),0));
-    $('payments-list').innerHTML=data.payments.map(p=>`<div>${receiptHtml(p,data.currency)}<button type="button" data-receipt="${p.id}">Imprimir recibo</button></div>`).join('')||'<p>Sin pagos registrados.</p>';
-    $('bank-contact').textContent=data.bank.contact||'';
+    mountUsage($('usage-history').querySelector('[data-usage]'),month=>apiGet(`/portal/usage?token=${encodeURIComponent(TOKEN)}&month=${encodeURIComponent(month)}`));
+    const { customer, invoices } = data;
+    $('payments-list').innerHTML=data.payments.map(p=>`<div class="border-b py-4 last:border-0">${receiptHtml(p,data.currency)}<button type="button" class="${buttonOutline} mt-3" data-receipt="${p.id}">Imprimir recibo</button></div>`).join('')||'<p class="text-sm text-muted-foreground">Sin pagos registrados.</p>';
 
     $('building-name').textContent = customer.building_name || '';
     $('p-apt').textContent   = customer.apartment;
@@ -180,13 +150,12 @@ async function load() {
 
     const statusEl = $('p-status');
     if (customer.status === 'active') {
-      statusEl.innerHTML = '<span class="badge badge-green">● Activo</span>';
+      statusEl.innerHTML = `<span class="${badgeSuccess}">● Activo</span>`;
     } else {
-      statusEl.innerHTML = '<span class="badge badge-red">● Suspendido</span>';
+      statusEl.innerHTML = `<span class="${badgeDestructive}">● Suspendido</span>`;
     }
 
     renderInvoices(invoices);
-    renderReports(paymentReports);
 
     loadingEl.style.display = 'none';
     content.style.display   = 'block';
@@ -198,45 +167,16 @@ async function load() {
   }
 }
 
-// Report form submission
-$('report-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const btn   = $('rep-btn');
-  const alert = $('rep-alert');
-  const amount    = parseFloat($('rep-amount').value);
-  const reference = $('rep-ref').value.trim();
-  const notes     = $('rep-notes').value.trim();
-
-  if (!reference || amount <= 0) return;
-  btn.disabled = true;
-  btn.textContent = 'Enviando…';
-  alert.style.display = 'none';
-
-  try {
-    await apiPost('/portal/report', { token: TOKEN, amount, reference, notes: notes || undefined });
-    alert.className = 'alert alert-ok';
-    alert.textContent = '✓ Reporte enviado. El administrador lo revisará pronto.';
-    alert.style.display = 'block';
-    e.target.reset();
-    // Refresh reports list
-    const data = await apiGet(`/portal?token=${encodeURIComponent(TOKEN)}`);
-    renderReports(data.paymentReports);
-  } catch (err) {
-    alert.className = 'alert alert-err';
-    alert.textContent = err.message || 'No se pudo enviar el reporte.';
-    alert.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Enviar reporte';
-  }
-});
-
 load();
 
-$('payments-list').addEventListener('click',event=>{const button=event.target.closest('[data-receipt]');if(!button)return;const p=portalData.payments.find(p=>p.id===Number(button.dataset.receipt));if(p)printReceipt(p,portalData.currency,Number($('ticket-width').value));});
-let trafficTimer;
+$('payments-list').addEventListener('click',event=>{const button=event.target.closest('[data-receipt]');if(!button)return;const p=portalData.payments.find(p=>p.id===button.dataset.receipt);if(p)printReceipt(p,portalData.currency,Number($('ticket-width').value));});
+let trafficTimer,trafficController;
 async function traffic(){
-  if(!TOKEN || document.hidden)return;
-  try {const data=await apiGet(`/portal/traffic?token=${encodeURIComponent(TOKEN)}`);$('p-traffic').textContent=data.available?data.stats.map(s=>`Bajada ${(s.downloadRate/1e6).toFixed(2)} / Subida ${(s.uploadRate/1e6).toFixed(2)} Mbps - ${((s.downloadBytes+s.uploadBytes)/1e9).toFixed(3)} GB`).join(' | ')||'Sin cola registrada':'Consumo no disponible';}catch{$('p-traffic').textContent='Consumo no disponible';}
+  if(!TOKEN || document.hidden || trafficController)return;
+  const controller=new AbortController();trafficController=controller;
+  try {const data=await apiGet(`/portal/traffic?token=${encodeURIComponent(TOKEN)}`,controller.signal);$('p-traffic').textContent=data.available?data.stats.map(s=>`Bajada ${(s.downloadRate/1e6).toFixed(2)} / Subida ${(s.uploadRate/1e6).toFixed(2)} Mbps - ${((s.downloadBytes+s.uploadBytes)/1e9).toFixed(3)} GB`).join(' | ')||'Sin cola registrada':'Consumo no disponible';}catch(error){if(error.name!=='AbortError')$('p-traffic').textContent='Consumo no disponible';}finally{if(trafficController===controller)trafficController=undefined;}
 }
-traffic();trafficTimer=setInterval(traffic,10000);window.addEventListener('pagehide',()=>clearInterval(trafficTimer));
+traffic();trafficTimer=setInterval(traffic,10000);window.addEventListener('pagehide',()=>{clearInterval(trafficTimer);trafficController?.abort();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)trafficController?.abort();else void traffic();});
+
+window.addEventListener('pageshow',event=>{if(event.persisted){trafficTimer=setInterval(traffic,10000);void traffic();}});

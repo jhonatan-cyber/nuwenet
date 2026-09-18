@@ -21,7 +21,7 @@ test('MikroTik: autenticación REST, normalización y rechazo de credenciales', 
   globalThis.fetch=async (url,init) => {
     calls.push({url,init});
     const path = String(url);
-    if (path.endsWith('/resource')) return Response.json([{version:'7.20', 'board-name':'Fixture', uptime:'1d'}]);
+    if (path.endsWith('/resource')) return Response.json({version:'7.20', 'board-name':'Fixture', uptime:'1d'});
     if (path.endsWith('/rest/ip/firewall/filter')) return Response.json([{'.id':'*1', comment:'nuwenet-suspend-192.168.10.9', 'src-address':'192.168.10.9', disabled:false}]);
     if (path.endsWith('/rest/queue/simple')) return Response.json([{'.id':'*A', name:'nuwenet-192.168.10.9', target:'192.168.10.9/32', 'max-limit':'20M/50M'}]);
     if (path.endsWith('/rest/ip/dhcp-server/lease')) return Response.json([{address:'192.168.10.9'}]);
@@ -215,6 +215,139 @@ test('MikroTik: firewall por destino y horario parental', async () => {
   } finally { globalThis.fetch = original; }
 });
 
+test('MikroTik: habilitar y deshabilitar puertos ethernet con verificación', async () => {
+  const original = globalThis.fetch;
+  let ports = [{ '.id': '*1', name: 'ether2', disabled: 'false' }];
+  globalThis.fetch = async (url, init = {}) => {
+    const path = String(url).split('?')[0];
+    const method = init.method || 'GET';
+    if (path.endsWith('/rest/interface/ethernet') && method === 'GET') return Response.json(ports);
+    if (path.includes('/rest/interface/ethernet/') && method === 'PATCH') {
+      const body = JSON.parse(init.body);
+      ports = ports.map(p => ({ ...p, disabled: body.disabled ? 'true' : 'false' }));
+      return Response.json({});
+    }
+    throw new Error(`Llamada inesperada: ${method} ${url}`);
+  };
+  try {
+    const adapter = new MikroTikAdapter();
+    assert.equal(adapter.description.capabilities.switch_ports, true);
+    assert.deepEqual(await adapter.setEthernetPort(target, credentials, { name: 'ether2', disabled: true }), { name: 'ether2', disabled: true });
+    assert.deepEqual(await adapter.setEthernetPort(target, credentials, { name: 'ether2', disabled: false }), { name: 'ether2', disabled: false });
+    await assert.rejects(() => adapter.setEthernetPort(target, credentials, { name: 'ether9', disabled: true }), /no encontrado/);
+    await assert.rejects(() => adapter.setEthernetPort(target, credentials, { name: 'mal nombre!', disabled: true }), /inválido/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('MikroTik: configurar HTTPS con certificado local autofirmado', async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  let certificates = [];
+  let services = [{ '.id': '*4', name: 'www-ssl', port: 443, disabled: 'false', address: '', certificate: '' }];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method || 'GET', body: init.body });
+    const path = String(url).split('?')[0];
+    if (path.endsWith('/rest/certificate') && (init.method || 'GET') === 'GET') return Response.json(certificates);
+    if (path.endsWith('/rest/certificate') && init.method === 'PUT') {
+      const body = JSON.parse(init.body);
+      assert.equal(body.name, 'nuwenet-local');
+      const created = { '.id': '*1', ...body };
+      certificates.push({ ...created, 'private-key': true });
+      return Response.json(created);
+    }
+    if (path.endsWith('/rest/certificate/sign') && init.method === 'POST') {
+      assert.deepEqual(JSON.parse(init.body), { numbers: '*1' });
+      return Response.json({});
+    }
+    if (path.endsWith('/rest/ip/service') && (init.method || 'GET') === 'GET') return Response.json(services);
+    if (path.includes('/rest/ip/service/') && init.method === 'PATCH') {
+      const body = JSON.parse(init.body);
+      services = services.map(s => ({ ...s, ...body }));
+      return Response.json({});
+    }
+    throw new Error(`Llamada inesperada: ${init.method} ${url}`);
+  };
+  try {
+    const adapter = new MikroTikAdapter();
+    const result = await adapter.setupHttps(target, credentials);
+    assert.deepEqual(result, { certificate: 'nuwenet-local', enabled: true });
+    // Idempotente: con certificado usable no vuelve a crearlo ni firmarlo.
+    const before = calls.length;
+    await adapter.setupHttps(target, credentials);
+    assert.ok(!calls.slice(before).some(c => c.method === 'PUT' || c.url.endsWith('/sign')));
+    await assert.rejects(() => adapter.setupHttps(target, credentials, { name: 'mal nombre!' }), /inválido/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('MikroTik: script CLI con bloque LAN/DHCP y leases validados', async () => {
+  const adapter = new MikroTikAdapter();
+  const base = { username: 'nuwenet-svc', password: 'secretpassword123' };
+  const script = adapter.generateCliScript({ ...base, lan: '192.168.10.1/24', lanInterface: 'ether2', pool: '192.168.10.100-192.168.10.200', dns: '8.8.8.8,1.1.1.1', leases: [
+    { mac: 'AA:BB:CC:DD:EE:01', address: '192.168.10.2', comment: 'switch' },
+    { mac: 'aa:bb:cc:dd:ee:02', address: '192.168.10.11', comment: 'dep-201' },
+  ] });
+  assert.ok(script.includes('/ip address add address=192.168.10.1/24 interface=ether2 comment="NuweNet LAN"'));
+  assert.ok(script.includes('/ip pool add name=nuwenet-lan ranges=192.168.10.100-192.168.10.200'));
+  assert.ok(script.includes('/ip dhcp-server network add address=192.168.10.0/24 gateway=192.168.10.1 dns-server=8.8.8.8,1.1.1.1'));
+  assert.ok(script.includes('/ip dhcp-server add name=nuwenet-lan interface=ether2 address-pool=nuwenet-lan disabled=no'));
+  assert.ok(script.includes('/ip dhcp-server lease add address=192.168.10.2 mac-address=AA:BB:CC:DD:EE:01 comment="switch"'));
+  assert.ok(script.includes('/ip dhcp-server lease add address=192.168.10.11 mac-address=AA:BB:CC:DD:EE:02 comment="dep-201"'));
+  // Sin LAN no hay bloque DHCP.
+  assert.ok(!adapter.generateCliScript(base).includes('dhcp-server'));
+  const wan = adapter.generateCliScript({ ...base, wanInterface: 'ether1', wanDhcp: true, nat: true });
+  assert.ok(wan.includes('/ip dhcp-client add interface=ether1 disabled=no comment="NuweNet WAN"'));
+  assert.ok(wan.includes('/ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade comment="NuweNet NAT"'));
+  assert.ok(!adapter.generateCliScript(base).includes('dhcp-client'));
+  assert.throws(() => adapter.generateCliScript({ ...base, wanInterface: 'mala interfaz!', wanDhcp: true }), /WAN inválida/);
+  assert.throws(() => adapter.generateCliScript({ ...base, lan: '192.168.10.1/24' }), /pool/);
+  assert.throws(() => adapter.generateCliScript({ ...base, lan: '192.168.10.1/24', pool: '192.168.11.100-192.168.11.200' }), /192.168.10.0\/24/);
+  assert.throws(() => adapter.generateCliScript({ ...base, lan: '192.168.10.1/24', pool: '192.168.10.100-192.168.10.200', leases: [{ mac: 'AA:BB:CC:DD:EE:01', address: '192.168.10.150' }] }), /choca con el pool/);
+  assert.throws(() => adapter.generateCliScript({ ...base, lan: '192.168.10.1/24', pool: '192.168.10.100-192.168.10.200', leases: [{ mac: 'no-es-mac', address: '192.168.10.2' }] }), /MAC inválida/);
+  assert.throws(() => adapter.generateCliScript({ ...base, lan: '192.168.10.1/24', pool: '192.168.10.100-192.168.10.200', leases: [{ mac: 'AA:BB:CC:DD:EE:01', address: '192.168.10.2' }, { mac: 'AA:BB:CC:DD:EE:01', address: '192.168.10.3' }] }), /duplicado/);
+});
+
+test('MikroTik: puesta en marcha inicial con verificación en la nueva IP', async () => {
+  const original = globalThis.fetch;
+  let addresses = [];
+  let identity = 'MikroTik';
+  let dns = '';
+  const resource = [{ version: '7.23.7', 'board-name': 'CHR', uptime: '1d' }];
+  globalThis.fetch = async (url, init = {}) => {
+    const path = String(url).split('?')[0];
+    const method = init.method || 'GET';
+    const json = body => JSON.parse(body);
+    if (path.endsWith('/rest/system/resource')) return Response.json(resource);
+    if (path.endsWith('/rest/interface') || path.endsWith('/rest/ip/firewall/filter') || path.endsWith('/rest/ip/firewall/address-list') || path.endsWith('/rest/queue/simple') || path.endsWith('/rest/ip/dhcp-server/lease')) return Response.json([]);
+    if (path.endsWith('/rest/system/identity') && method === 'PATCH') { identity = json(init.body).name; return Response.json({}); }
+    if (path.endsWith('/rest/system/identity')) return Response.json([{ name: identity }]);
+    if (path.endsWith('/rest/ip/address') && method === 'GET') return Response.json(addresses);
+    if (path.endsWith('/rest/ip/address') && method === 'PUT') { const created = { '.id': `*${addresses.length + 1}`, ...json(init.body) }; addresses.push(created); return Response.json(created); }
+    if (path.endsWith('/rest/ip/dns/set') && method === 'POST') { dns = json(init.body).servers; return Response.json({}); }
+    if (path.endsWith('/rest/ip/dns')) return Response.json({ servers: dns });
+    if (path.endsWith('/rest/user/group') && method === 'GET') return Response.json([]);
+    if (path.endsWith('/rest/user/group') && method === 'PUT') return Response.json({ '.id': '*1' });
+    if (path.endsWith('/rest/user') && method === 'GET') return Response.json([]);
+    if (path.endsWith('/rest/user') && method === 'PUT') return Response.json({ '.id': '*A' });
+    if (path.endsWith('/rest/certificate') && method === 'GET') return Response.json([]);
+    if (path.endsWith('/rest/certificate') && method === 'PUT') return Response.json({ '.id': '*1' });
+    if (path.endsWith('/rest/certificate/sign')) return Response.json({});
+    if (path.endsWith('/rest/ip/service') && method === 'GET') return Response.json([{ '.id': '*4', name: 'www-ssl', port: 443, disabled: 'false', address: '', certificate: 'nuwenet-local' }]);
+    if (path.includes('/rest/ip/service/') && method === 'PATCH') return Response.json({});
+    throw new Error(`Llamada inesperada: ${method} ${url}`);
+  };
+  try {
+    const registry = { get: () => new MikroTikAdapter(), list: () => [] };
+    const service = new RoutersService({}, registry, {});
+    const result = await service.onboard({ host: '192.168.88.1', username: 'admin', password: '', identity: 'edificio-norte', newAddress: '192.168.10.1/24', interface: 'ether2', dns: '8.8.8.8', setup_https: true });
+    assert.equal(result.identity, 'edificio-norte');
+    assert.equal(result.managementIp, '192.168.10.1/24');
+    assert.equal(result.verified, true);
+    assert.equal(result.https.certificate, 'nuwenet-local');
+    assert.ok(result.serviceUsername.length >= 3);
+    await assert.rejects(() => service.onboard({ host: '8.8.8.8', identity: 'x', newAddress: '192.168.10.1/24' }), /privada|contactar/);
+  } finally { globalThis.fetch = original; }
+});
+
 test('Credenciales cifradas, concurrencia de consulta y descarte de resultados obsoletos', async () => {
   return runAsSystem(async () => {
   const previous={DATA_DIR:process.env.DATA_DIR,DB_DRIVER:process.env.DB_DRIVER,ROUTER_ENCRYPTION_KEY:process.env.ROUTER_ENCRYPTION_KEY};
@@ -311,6 +444,8 @@ test('MikroTik: consulta y ajuste de servicios, aprovisionamiento de usuario y s
 
     // 3. Provision user
     const prov = await adapter.provisionNuwenetUser(target, credentials, { username: 'nuwenet-svc', password: 'secretpassword123' });
+    const groupCall=calls.find(c=>c.url.endsWith('/rest/user/group')&&c.init?.method==='PUT');
+    assert.equal(JSON.parse(groupCall.init.body).policy,'read,write,rest-api');
     assert.equal(prov.username, 'nuwenet-svc');
     assert.equal(prov.password, 'secretpassword123');
     assert.ok(prov.script.includes('/user group add name=nuwenet'));
@@ -321,6 +456,74 @@ test('MikroTik: consulta y ajuste de servicios, aprovisionamiento de usuario y s
     assert.ok(script.includes('/ip service set www-ssl port=8443 disabled=no'));
     assert.ok(script.includes('/ip service set www disabled=yes'));
     assert.ok(script.includes('test-user'));
+    assert.ok(script.includes('policy=read,write,rest-api '));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('MikroTik: configuración visual WAN y LAN/DHCP por REST con verificación', async () => {
+  const original = globalThis.fetch;
+  const store = {
+    '/rest/ip/dhcp-client': [],
+    '/rest/ip/firewall/nat': [],
+    '/rest/ip/address': [],
+    '/rest/ip/pool': [],
+    '/rest/ip/dhcp-server/network': [],
+    '/rest/ip/dhcp-server': [],
+    '/rest/ip/dhcp-server/lease': [],
+  };
+  let seq = 0;
+  globalThis.fetch = async (url, init) => {
+    const path = String(url);
+    const collection = path.replace(/\/\*[A-Za-z0-9]+$/, '');
+    const key = Object.keys(store).find(k => collection.endsWith(k));
+    if (!key) return Response.json({});
+    const rows = store[key];
+    const method = init?.method || 'GET';
+    const idMatch = path.match(/\/(\*[A-Za-z0-9]+)$/);
+    if (method === 'PUT') {
+      const body = JSON.parse(init.body);
+      const row = { '.id': `*${++seq}`, ...body };
+      rows.push(row);
+      return Response.json(row);
+    }
+    if (method === 'PATCH' && idMatch) {
+      const row = rows.find(r => r['.id'] === idMatch[1]);
+      if (!row) return Response.json({});
+      Object.assign(row, JSON.parse(init.body));
+      return Response.json(row);
+    }
+    return Response.json(rows);
+  };
+  try {
+    const adapter = new MikroTikAdapter();
+    const wan = await adapter.setupWan(target, credentials, { wanInterface: 'ether1', wanDhcp: true, nat: true });
+    assert.equal(wan.wanInterface, 'ether1');
+    assert.equal(store['/rest/ip/dhcp-client'].length, 1);
+    assert.equal(store['/rest/ip/firewall/nat'].length, 1);
+    // Idempotente: segunda aplicación no duplica.
+    await adapter.setupWan(target, credentials, { wanInterface: 'ether1', wanDhcp: true, nat: true });
+    assert.equal(store['/rest/ip/dhcp-client'].length, 1);
+    assert.equal(store['/rest/ip/firewall/nat'].length, 1);
+    await assert.rejects(() => adapter.setupWan(target, credentials, {}), /DHCP en WAN o NAT/);
+    await assert.rejects(() => adapter.setupWan(target, credentials, { wanInterface: 'mala!', wanDhcp: true }), /WAN inválida/);
+    const lan = await adapter.setupLanDhcp(target, credentials, {
+      lan: '192.168.10.1/24', lanInterface: 'ether2', pool: '192.168.10.100-192.168.10.200',
+      dns: '8.8.8.8,1.1.1.1', leases: [{ mac: 'AA:BB:CC:DD:EE:01', address: '192.168.10.11', comment: 'switch' }],
+    });
+    assert.equal(lan.lan, '192.168.10.1/24');
+    assert.equal(lan.leases, 1);
+    assert.equal(store['/rest/ip/pool'].length, 1);
+    assert.equal(store['/rest/ip/dhcp-server'].length, 1);
+    assert.equal(store['/rest/ip/dhcp-server/lease'].length, 1);
+    // Validaciones heredadas del generador CLI.
+    await assert.rejects(() => adapter.setupLanDhcp(target, credentials, { lan: '192.168.10.1/24' }), /pool/);
+    await assert.rejects(() => adapter.setupLanDhcp(target, credentials, { lan: '192.168.10.1/24', pool: '192.168.11.100-192.168.11.200' }), /192.168.10.0\/24/);
+    await assert.rejects(() => adapter.setupLanDhcp(target, credentials, {
+      lan: '192.168.10.1/24', pool: '192.168.10.100-192.168.10.200',
+      leases: [{ mac: 'AA:BB:CC:DD:EE:01', address: '192.168.10.150' }],
+    }), /choca con el pool/);
   } finally {
     globalThis.fetch = original;
   }

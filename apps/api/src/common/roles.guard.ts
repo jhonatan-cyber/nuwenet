@@ -16,7 +16,7 @@ export class RolesGuard implements CanActivate {
     // Rutas públicas (portal, bootstrap, sesión): sin metadatos, el guard no
     // decide; el middleware de main.ts ya las excluyó de la autenticación.
     if (!required || !required.length) return true;
-    const req = context.switchToHttp().getRequest() as { user?: { id: number; username: string; role: string } };
+    const req = context.switchToHttp().getRequest() as { user?: { id: string; username: string; role: string } };
     const actor = req.user;
     if (!actor) throw new UnauthorizedException('Inicia sesión para continuar.');
     if (isSystem(actor)) return true;

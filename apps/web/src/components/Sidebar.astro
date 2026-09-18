@@ -1,37 +1,32 @@
 ---
-const sections = [
-  { id: 'overview', icon: '◫', label: 'Resumen' },
-  { id: 'buildings', icon: '▥', label: 'Edificios y accesos' },
-  { id: 'customers', icon: '▦', label: 'Departamentos' },
-  { id: 'plans', icon: '◈', label: 'Planes de internet' },
-  { id: 'billing', icon: '▤', label: 'Mensualidades y pagos' },
-  { id: 'network', icon: '◎', label: 'Control de acceso' },
-  { id: 'routers', icon: '⌘', label: 'Routers' },
-  { id: 'activity', icon: '◷', label: 'Actividad' },
-  { id: 'payments', icon: '↗', label: 'Historial de pagos' },
-  { id: 'settings', icon: '⚙', label: 'Edificio y automatización' },
-  { id: 'users', icon: '♙', label: 'Usuarios y permisos' },
-  { id: 'backups', icon: '▣', label: 'Respaldos' },
-  { id: 'audit', icon: '≡', label: 'Auditoría' },
-];
+import { pages } from '../lib/pages';
+import { LayoutDashboard, Building2, Users, Tag, Receipt, Network, Router, Activity, Banknote, Settings, UserCog, Database, ScrollText } from 'lucide-astro';
+
+// Nombres de sección y visibilidad viven en lib/pages; aquí solo el orden y el icono.
+const order = ['overview', 'buildings', 'customers', 'plans', 'billing', 'network', 'routers', 'activity', 'payments', 'settings', 'users', 'backups', 'audit'];
+const icons = {
+  overview: LayoutDashboard, buildings: Building2, customers: Users, plans: Tag, billing: Receipt, network: Network, routers: Router,
+  activity: Activity, payments: Banknote, settings: Settings, users: UserCog, backups: Database, audit: ScrollText,
+};
+const sections = order.map(id => ({ id, Icon: icons[id as keyof typeof icons], label: pages[id].label }));
 ---
-<aside id="main-sidebar" class="floating-sidebar">
-  <div class="sidebar-head">
-    <a class="brand" href="/">◈ <span>nuwe<strong>net</strong></span></a>
+<aside id="main-sidebar" class="floating-sidebar" data-open="false">
+  <div class="pb-7">
+    <a class="flex items-center gap-2.5 px-3 text-2xl font-semibold tracking-tight" href="/">◈ <span>nuwe<strong>net</strong></span></a>
   </div>
-  <div class="sidebar-scroll">
-    <p class="nav-label">ESPACIO DE TRABAJO</p>
-    <nav aria-label="Navegación principal">
+  <div class="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
+    <p class="px-3 py-2 text-[10px] tracking-widest text-muted-foreground">ESPACIO DE TRABAJO</p>
+    <nav class="grid gap-1" aria-label="Navegación principal">
       {sections.map(section => (
-        <button data-page={section.id} class:list={{ selected: section.id === 'overview' }}>
-          {section.icon} &nbsp; {section.label}
+        <button data-page={section.id} data-selected={section.id === 'overview' ? 'true' : 'false'} class="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground [&_svg]:size-4 [&_svg]:shrink-0">
+          <section.Icon aria-hidden="true" /> {section.label}
         </button>
       ))}
     </nav>
   </div>
-  <div class="sidebar-bottom">
-    <span class="dot"></span> Entorno local
-    <small>NuweNet · Versión inicial</small>
+  <div class="mt-auto border-t px-3 pt-4 text-xs text-muted-foreground">
+    <span class="mr-1.5 inline-block size-1.5 rounded-full bg-success"></span> Entorno local
+    <small class="mt-1.5 block text-[11px]">NuweNet · Versión inicial</small>
   </div>
 </aside>
-<button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Cerrar navegación" hidden></button>
+<button id="sidebar-backdrop" class="fixed inset-0 z-[38] rounded-none bg-black/50" type="button" aria-label="Cerrar navegación" hidden></button>

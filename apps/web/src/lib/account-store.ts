@@ -18,11 +18,6 @@ export function applyTheme() {
   document.documentElement.dataset.density = preferences.compact ? 'compact' : 'comfortable';
   document.documentElement.dataset.reduceMotion = String(preferences.reduceMotion);
   document.querySelectorAll<HTMLInputElement>('input[name="theme-choice"]').forEach(input => { input.checked = input.value === preferences.theme; });
-  const toggle = document.querySelector('#theme-toggle');
-  if (toggle) {
-    toggle.setAttribute('aria-label', `Tema actual: ${preferences.theme === 'system' ? `sistema (${effective})` : effective}. Activar para cambiar.`);
-    const icon = toggle.querySelector('.theme-icon'); if (icon) icon.textContent = effective === 'dark' ? '☾' : '☀';
-  }
 }
 export function updatePreferences(update: Partial<Preferences>) {
   preferences = { ...preferences, ...update }; applyTheme();

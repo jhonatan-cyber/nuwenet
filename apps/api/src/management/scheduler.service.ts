@@ -1,19 +1,24 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import {forEachConcurrent} from '../common/concurrency';
 import {UsageService} from './usage.service';
 import { DatabaseService } from '../database/database.service';
 import { RoutersService } from '../routers/routers.service';
 import { BackupService } from './backup.service';
 import { localDay, ManagementService } from './management.service';
 import { runAsSystem } from '../common/request-context';
+import { uuidv7 } from '../common/uuid';
 
 @Injectable()
 export class OverdueScheduler implements OnModuleInit,OnModuleDestroy {
   private timer:ReturnType<typeof setInterval> | null=null;
-  private running:Promise<void> | null=null;
+  private readonly lanes=new Map<string,Promise<void>>();
+  private readonly ticks=new Set<Promise<void>>();
+  private stopped=false;
   private readonly logger=new Logger(OverdueScheduler.name);
   constructor(private readonly management:ManagementService,private readonly db:DatabaseService,private readonly routers:RoutersService,private readonly backups:BackupService,@Optional() private readonly usage?:UsageService) {}
   onModuleInit() {
-    this.timer=setInterval(()=>{if (!this.running) this.running=this.tick().catch(()=>this.logger.warn('No se completó la revisión automática.')).finally(()=>{this.running=null;});},10000);
+    this.stopped=false;
+    this.timer=setInterval(()=>{void this.tick().catch(()=>this.logger.warn('No se completo la revision automatica.'));},10000);
     this.timer.unref?.();
   }
   // C5: diagnóstico por tarea en settings (`task:<nombre>` con última
@@ -22,9 +27,11 @@ export class OverdueScheduler implements OnModuleInit,OnModuleDestroy {
   private async recordTask(key:string,started:number,error:unknown) {
     const diagnostic={last_run:new Date(started).toISOString(),last_success:error?undefined:null,duration_ms:Date.now()-started,last_error:error instanceof Error?error.message.slice(0,300):error?String(error).slice(0,300):null};
     try {
-      const [previous]=await this.db.read(tx=>tx`SELECT value FROM settings WHERE key=${'task:'+key}`);
-      const keep=previous?JSON.parse(previous.value):{};
-      await this.db.write(tx=>tx`INSERT INTO settings(key,value) VALUES (${'task:'+key},${JSON.stringify({...diagnostic,last_success:error?keep.last_success||null:diagnostic.last_run})}) ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+      await this.db.writeOperational('diagnostic:'+key,async tx=>{
+        const [previous]=await tx`SELECT value FROM settings WHERE key=${'task:'+key}`;
+        const keep=previous?JSON.parse(previous.value):{};
+        await tx`INSERT INTO settings(id,key,value) VALUES (${uuidv7()},${'task:'+key},${JSON.stringify({...diagnostic,last_success:error?keep.last_success||null:diagnostic.last_run})}) ON CONFLICT(key) DO UPDATE SET value=excluded.value`;
+      });
     } catch { /* el diagnóstico no bloquea la operación */ }
   }
   private async due(key:string,minutes:number,work:()=>Promise<unknown>) {
@@ -38,7 +45,7 @@ export class OverdueScheduler implements OnModuleInit,OnModuleDestroy {
         await work();
         await this.recordTask(key,started,null);
       } catch (error) { await this.recordTask(key,started,error); throw error; }
-      await this.db.write(tx=>tx`INSERT INTO settings(key,value) VALUES (${name},${new Date().toISOString()}) ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+      await this.db.writeOperational('schedule:'+key,tx=>tx`INSERT INTO settings(id,key,value) VALUES (${uuidv7()},${name},${new Date().toISOString()}) ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
     } finally { await this.management.releaseTask(name,token); }
   }
   // C1: cada trabajo directo registra diagnóstico y falla aislado, sin
@@ -48,46 +55,53 @@ export class OverdueScheduler implements OnModuleInit,OnModuleDestroy {
     try { await work(); await this.recordTask(key,started,null); }
     catch (error) { await this.recordTask(key,started,error); this.logger.warn(`Falló la tarea ${key}; se reintentará.`); }
   }
-  async tick() {
-    // B7: todo el trabajo automático corre como actor de sistema explícito.
-    return runAsSystem(async () => {
-    // Setup locks both manual and automated business operations.
-    const [users]=await this.db.read(tx=>tx`SELECT COUNT(*) count FROM users`); if (!Number(users.count)) return;
-    // Metering must not depend on billing, delivery or network-command success.
-    // `due` ya registra su propio diagnóstico al ejecutarse.
-    try {await this.due('usage',1,async()=>{await this.usage?.collect();});}
-    catch {this.logger.warn('Falló el registro de consumo; se reintentará.');}
-    await this.timed('linked',()=>this.management.syncLinkedDevices());
-    await this.timed('network',()=>this.management.processQueue());
-    await this.timed('notifications',()=>this.management.processNotifications());
-    const config=await this.management.settings();
-    const tasks:[string,number,()=>Promise<unknown>][]=[
-      ['overdue',config.overdue_minutes,()=>this.management.reviewOverdue(true)],
-      ['billing',config.auto_billing?60:0,async()=>{const day=localDay();if(Number(day.slice(8))>=config.billing_day) await this.management.generateBilling({period:day.slice(0,7),due:`${day.slice(0,7)}-${String(config.due_day).padStart(2,'0')}`});}],
-      ['reminders',config.reminders_enabled?60:0,()=>this.management.sendReminders()],
-      ['backups',config.backup_hours*60,()=>this.backups.create()],
-      // B9: retención de 180 días para auditoría y eventos de seguridad, más
-      // limpieza de sesiones vencidas. No borra eventos de negocio (events).
-      ['sessions',60,()=>this.db.write(async tx=>{
-        await tx`DELETE FROM sessions WHERE expires_at<${new Date().toISOString()}`;
-        const cutoff=new Date(Date.now()-180*86400000).toISOString();
-        await tx`DELETE FROM audit_log WHERE created_at<${cutoff}`;
-        await tx`DELETE FROM security_events WHERE created_at<${cutoff}`;
-      })],
-    ];
-    for (const [name,minutes,work] of tasks) {
-      try { await this.due(name,minutes,work); } catch { this.logger.warn(`Falló la tarea ${name}; se reintentará.`); }
-    }
-    if (config.monitor_minutes>0) {
-      const routers=await this.db.read(tx=>tx`SELECT id,status FROM routers ORDER BY id`);
-      for (const router of routers) {
-        try { await this.due(`router:${router.id}`,config.monitor_minutes,async()=>{
-          const result=await this.routers.check(router.id);
-          if (router.status==='untested' || result.success !== (router.status==='connected')) await this.db.write(tx=>tx`INSERT INTO notifications(created_at,channel,target,message,building_id) VALUES (${new Date().toISOString()},'log','Administrador',${`Router ${result.router.name}: ${result.success?'conexión disponible':'no responde o rechaza el acceso'}.`},${result.router.building_id})`);
-        }); } catch { this.logger.warn(`Falló el monitoreo del router #${router.id}.`); }
-      }
-    }
-    });
+  private launch(name:string,work:()=>Promise<void>):Promise<void> {
+    if(this.stopped||this.lanes.has(name))return Promise.resolve();
+    const promise=work().catch(()=>this.logger.warn(`Fallo el ciclo ${name}; se reintentara.`)).finally(()=>{this.lanes.delete(name);});
+    this.lanes.set(name,promise);return promise;
   }
-  async onModuleDestroy() { if(this.timer)clearInterval(this.timer);await this.running; }
+  tick():Promise<void> {
+    if(this.stopped)return Promise.resolve();
+    const tick=runAsSystem(async()=>{
+      const [users]=await this.db.read(tx=>tx`SELECT COUNT(*) count FROM users`);if(!Number(users.count)||this.stopped)return;
+      const config=await this.management.settings();
+      await Promise.all([
+        this.launch('usage',()=>this.due('usage',1,async()=>{await this.usage?.collect();})),
+        this.launch('network',async()=>{
+          await this.timed('linked',()=>this.management.syncLinkedDevices());
+          await this.timed('network',()=>this.management.processQueue());
+        }),
+        this.launch('billing',async()=>{
+          // Preserve ordering of overdue review and billing within this lane.
+          try{await this.due('overdue',config.overdue_minutes,()=>this.management.reviewOverdue(true));}catch{this.logger.warn('Fallo la revision de vencimientos.');}
+          await this.due('billing',config.auto_billing?60:0,async()=>{
+            const day=localDay();
+            if(Number(day.slice(8))>=config.billing_day)await this.management.generateBilling({period:day.slice(0,7),due:`${day.slice(0,7)}-${String(config.due_day).padStart(2,'0')}`});
+          });
+        }),
+        this.launch('backups',()=>this.due('backups',config.backup_hours*60,()=>this.backups.create())),
+        this.launch('sessions',()=>this.due('sessions',60,()=>this.db.write(async tx=>{
+          await tx`DELETE FROM sessions WHERE expires_at<${new Date().toISOString()}`;
+          const cutoff=new Date(Date.now()-180*86400000).toISOString();
+          await tx`DELETE FROM audit_log WHERE created_at<${cutoff}`;
+          await tx`DELETE FROM security_events WHERE created_at<${cutoff}`;
+        }))),
+        this.launch('monitor',async()=>{
+          if(!(config.monitor_minutes>0))return;
+          const routers=await this.db.read(tx=>tx<{id:string}[]>`SELECT id FROM routers WHERE disabled=0 ORDER BY id`);
+          await forEachConcurrent(routers,3,async router=>{
+            try{await this.due(`router:${router.id}`,config.monitor_minutes,async()=>{await this.routers.check(router.id);});}
+            catch{this.logger.warn(`Fallo el monitoreo del router #${router.id}.`);}
+          });
+        }),
+      ]);
+    });
+    this.ticks.add(tick);
+    void tick.finally(()=>this.ticks.delete(tick)).catch(()=>{});
+    return tick;
+  }
+  async onModuleDestroy() {
+    this.stopped=true;if(this.timer)clearInterval(this.timer);
+    await Promise.allSettled([...this.ticks,...this.lanes.values()]);
+  }
 }

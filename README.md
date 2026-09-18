@@ -2,11 +2,11 @@
 
 Plan de trabajo: [implementación de mejoras, prioridades y criterios de aceptación](docs/plan-implementacion-mejoras.md).
 
-Interfaz: preferencias, perfil, planes y departamentos (listado, formularios y diálogos) utilizan islas React con shadcn/ui y Tailwind; la migración es gradual. La gráfica de consumo sigue compartida con el portal. Consulta [estilos, componentes y alcance migrado](docs/estilos-y-componentes.md).
+Interfaz: todas las secciones del panel son islas React con shadcn/ui y Tailwind; el portal y la página de suspensión comparten las mismas utilidades y tokens. La gráfica de consumo sigue compartida con el portal.
 
 Sistema de gestión de internet para edificios: **NestJS + Astro + Bun**, con **PostgreSQL** como único motor de base de datos para despliegue en VPS.
 
-El panel incluye **Routers** para registrar conexiones y probar consultas reales mediante adaptadores ARRIS Touchstone, MikroTik REST y OpenWrt ubus. MikroTik puede actuar como equipo central para aplicar acceso y velocidad mediante una cola persistente. Consulta [la guía de operación, permisos, automatizaciones y respaldos](docs/operacion.md) y [la API de routers](docs/router-api.md).
+El panel incluye **Equipos de red** para registrar conexiones y probar consultas reales mediante adaptadores ARRIS Touchstone, MikroTik REST, OpenWrt ubus y TR-369/USP (base). Cada ficha muestra su nivel de administración (completa, parcial, solo consulta o sin integración). MikroTik puede actuar como equipo central para aplicar acceso y velocidad mediante una cola persistente, y el asistente **Configurar red del edificio** organiza inventario, conexiones y revisión antes de aplicar. Consulta [la API de routers](docs/router-api.md) (autenticación y permisos, operación diaria, cifrado) y [equipos de red](docs/equipos-de-red.md).
 
 ## Instalación
 
@@ -53,8 +53,6 @@ HOST=127.0.0.1
 PORT=3000
 ROUTER_ENCRYPTION_KEY=clave_aleatoria_de_32_bytes_en_base64
 SETUP_TOKEN=codigo_privado_de_instalacion
-NOTIFY_CHANNEL=log
-WHATSAPP_SEND_ENABLED=false
 ```
 
 Prepara `nuwenet` desde la administración de PostgreSQL y ejecuta el sistema:
@@ -65,6 +63,8 @@ bun run start
 ```
 
 La aplicación crea las tablas y aplica las migraciones en `nuwenet`. Ningún comando de la aplicación ni de pruebas crea o elimina bases de datos.
+
+El contenido de las tablas heredadas que una migración retira queda archivado dentro del esquema. Se consulta y se exporta con `bun run db:archive` (inventario sin argumentos, `bun run db:archive <tabla>` para una tabla y `--export` para exportarla); con sesión de super-admin, `GET /api/retired-rows`, `GET /api/retired-rows/:tabla` y `GET /api/retired-rows/:tabla/export` ofrecen lo mismo.
 
 Para desarrollar con PostgreSQL:
 
@@ -92,19 +92,20 @@ En un alojamiento web configura sus variables de entorno: `DB_DRIVER=postgres`, 
 | `SESSION_TTL_HOURS` | `72` | Vigencia de la sesión del panel |
 | `OVERDUE_CRON_MINUTES` | `0` | Revisión automática de vencidos cada N minutos; `0` = solo manual |
 | `CURRENCY` | Sin valor | Símbolo de moneda mostrado en el panel |
-| `NOTIFY_CHANNEL` | `log` | Canal de avisos (base + consola) |
 
 No uses variables `PUBLIC_*` para credenciales: Astro puede incluirlas en el navegador.
 
 ## Estructura
 
-- `apps/api/src/database`: conexión PostgreSQL mediante Bun SQL, migración inicial y transacciones.
+- `apps/api/src/database`: conexión PostgreSQL mediante Bun SQL y transacciones; el mapa de la capa de datos está en `apps/api/src/database/migrations/index.ts`.
 - `apps/api/src/management`: controladores, DTOs y reglas de planes, departamentos, cobros y acceso.
 - `apps/web/src`: páginas, componentes, layout, estilos e interacción del panel Astro.
 - `test`: integración PostgreSQL.
 - `scripts`: diagnóstico, recuperación de respaldos y prueba del navegador.
 
 Las consultas de negocio se parametrizan con Bun SQL. PostgreSQL utiliza un bloqueo transaccional compartido entre instancias para evitar duplicar pagos y decisiones de acceso simultáneas. Las migraciones posteriores deben añadirse como nuevas versiones.
+
+Todas las tablas usan un `id UUID` primario generado con UUID v7 (`apps/api/src/common/uuid.ts`): ordenable por fecha de creación y sin exponer volumen. Las claves naturales (correo de usuario, departamento por edificio, token de sesión, día de consumo) se conservan como restricciones UNIQUE y las escrituras envían siempre el identificador explícito, así que el esquema no depende de valores por defecto del motor.
 
 ## Validación
 
@@ -131,7 +132,7 @@ Para ejecutar tipos, compilación, suite e interfaz en secuencia, sin compilar d
 bun run verify
 ```
 
-La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a un esquema temporal dentro de `nuwenet`. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend y no habilita WhatsApp. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su esquema temporal.
+La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a un esquema temporal dentro de `nuwenet`. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su esquema temporal.
 
 También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La prueba del navegador siempre utiliza un esquema temporal dentro de `nuwenet`.
 
@@ -139,15 +140,15 @@ También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La 
 
 Planes, departamentos con IP privada opcional, mensualidades, pagos completos o abonos parciales, revisión manual o automática de vencimientos, suspensión y reactivación e historial. Sin IP o sin equipo central el control queda simulado; con IP y equipo central registrado se aplica en red. Los importes se guardan en centavos con la moneda de `CURRENCY` solo en presentación. Los vencimientos usan America/La_Paz y el historial muestra fechas UTC.
 
-El panel y las operaciones de negocio exigen sesión. Sin usuarios solo se permite crear el primer usuario, que es el super-admin único y global (dueño del sistema). El super-admin da de alta a los administradores, les asigna edificios y configura la red de cada uno. Sin roles de caja ni técnico. Los avisos se registran internamente o se envían por WhatsApp si se configura el proveedor y se habilita expresamente el envío. La integración incluye cola, reintentos y webhook de estados; que exista código no implica que esté habilitado en esta instalación. SMS no está implementado.
+El panel y las operaciones de negocio exigen sesión. Sin usuarios solo se permite crear el primer usuario, que es el super-admin único y global (dueño del sistema). El super-admin da de alta a los administradores, les asigna edificios y configura la red de cada uno. Sin roles de caja ni técnico. El sistema no genera ni envía notificaciones a residentes.
 
 La generación incluye departamentos suspendidos y excluye archivados. El día del vencimiento y los días de gracia configurados no provocan corte. Un pago puede reactivar si no quedan cuotas vencidas; nunca elimina un bloqueo manual. Los abonos, referencias, recibos y reversiones conservan el historial.
 
 El control de acceso es **mixto**: real en el equipo central por IP (`suspend`, `reactivate`, `speed_limit`, `firewall` por destino y `parental_control` por horario) y simulado en el resto. Cada edificio tiene su propio equipo central MikroTik, sus planes, departamentos e IPs (el departamento y la IP se validan por edificio y pueden repetirse en edificios distintos). ARRIS TG2492LG-NA con firmware 9.1.103HB admite filtros IPv4 TCP/UDP por IP, puertos y horarios; no ofrece límites de velocidad ni sustituye al central MikroTik. OpenWrt permite consulta. El estado guardado de un router no acredita conectividad física actual.
 
-El portal permite consultar la cuenta, reportar transferencias y mostrar datos bancarios/QR por edificio; administración verifica el ingreso antes de aprobar. No hay conciliación bancaria automática ni facturación fiscal. El consumo incluye historial diario y mensual persistente a partir de muestras de colas MikroTik, con indicación de reinicios y huecos; el tráfico en vivo es una consulta distinta. La puesta en marcha con residentes exige validar servidor, red e integraciones en su entorno real.
+El portal permite consultar la cuenta, las cuotas, los pagos y los recibos. Los pagos y abonos se registran manualmente en administración; no se generan cobros bancarios ni QR. No hay facturación fiscal. El consumo incluye historial diario y mensual persistente a partir de muestras de colas MikroTik, con indicación de reinicios y huecos; el tráfico en vivo es una consulta distinta. La puesta en marcha con residentes exige validar servidor, red e integraciones en su entorno real.
 
-Desde **Respaldos** puedes crear y verificar copias; los intervalos se configuran en **Edificio y automatización**. PostgreSQL utiliza `pg_dump` y `pg_restore`; instala estas herramientas en la VPS. Para restaurar a un directorio nuevo utiliza `scripts/restore-backup.mjs`; consulta el procedimiento en [la guía de operación](docs/operacion.md#respaldos-y-restauración).
+Desde **Respaldos** puedes crear y verificar copias; los intervalos se configuran en **Edificio y automatización**. PostgreSQL utiliza `pg_dump` y `pg_restore`; instala estas herramientas en la VPS. Para restaurar a un directorio nuevo utiliza `scripts/restore-backup.mjs` (ver su ayuda con `bun scripts/restore-backup.mjs --help`).
 
 Documentación: [NestJS](https://docs.nestjs.com/first-steps), [Astro](https://docs.astro.build/en/guides/client-side-scripts/) y [Bun SQL](https://bun.com/docs/runtime/sql).
 

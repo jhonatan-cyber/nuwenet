@@ -15,7 +15,7 @@ const setupToken = 'ui-installation-fixture';
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|COMSPEC|TEMP|TMP|TMPDIR|HOME|USERPROFILE|LOCALAPPDATA|APPDATA|PLAYWRIGHT_BROWSERS_PATH)$/i.test(key)));
 const server = spawn(process.execPath, ['--no-env-file', 'scripts/ui-test-server.mjs'], {
-  env: { ...environment, ...pg.env, SETUP_TOKEN: setupToken, DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(port), DATA_DIR: directory, BACKUP_DIR:path.join(directory,'backups'), NOTIFY_CHANNEL:'log', WHATSAPP_SEND_ENABLED:'false', OVERDUE_CRON_MINUTES:'0' },
+  env: { ...environment, ...pg.env, SETUP_TOKEN: setupToken, DB_DRIVER: 'postgres', HOST: '127.0.0.1', PORT: String(port), DATA_DIR: directory, BACKUP_DIR:path.join(directory,'backups'), OVERDUE_CRON_MINUTES:'0' },
   stdio: ['ignore', 'pipe', 'pipe'],
   windowsHide: true,
 });
@@ -42,9 +42,27 @@ try {
     });
     assert.equal(response.status(), 403, 'El setup protegido rechaza el código ausente o incorrecto');
   }
+  // El selector de tema de la pantalla de acceso comparte preferencias con el panel.
+  await page.locator('#auth-theme-button').click();
+  await page.locator('#auth-theme-menu [role="menuitemradio"]').first().waitFor();
+  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('role')),'menuitemradio','El selector de tema abre con el foco dentro');
+  await page.locator('#auth-theme-menu [data-theme-value="dark"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'dark','El tema elegido en la pantalla de acceso se aplica');
+  assert.equal(await page.locator('#auth-theme-menu').isHidden(),true,'Elegir un tema cierra el selector');
+  assert.equal(await page.locator('#auth-theme-button').getAttribute('aria-expanded'),'false');
+  await page.locator('#auth-theme-button').click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#auth-theme-menu').isHidden(),true,'Escape cierra el selector de tema');
+  assert.equal(await page.locator('#auth-theme-button').evaluate(el=>el===document.activeElement),true,'Escape devuelve el foco al botón');
+  await page.locator('#auth-theme-button').click();
+  await page.getByLabel('Usuario', {exact:true}).click();
+  assert.equal(await page.locator('#auth-theme-menu').isHidden(),true,'Un clic fuera cierra el selector de tema');
+  await page.locator('#auth-theme-button').click();
+  await page.locator('#auth-theme-menu [data-theme-value="light"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
   await page.getByLabel('Usuario', {exact:true}).fill('admin');
   await page.getByLabel('Contraseña', {exact:true}).fill('fixture-password');
-  await page.getByText('Tengo un código de instalación', {exact:true}).click();
+  await page.getByLabel('Código de instalación', {exact:true}).waitFor({state:'visible'});
   await page.getByLabel('Código de instalación', {exact:true}).fill(setupToken);
   await page.getByRole('button',{name:'Crear y entrar'}).click();
   await page.getByRole('heading', { name: 'Tu edificio, conectado.' }).waitFor();
@@ -120,17 +138,47 @@ try {
   await page.getByLabel('Contraseña inicial',{exact:true}).fill('fixture-password');
   await page.getByRole('button',{name:'Guardar',exact:true}).click();
   await page.getByText('admin@example.test',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Editar admin@example.test',exact:true}).click();
+  assert.equal(await page.getByLabel('CI',{exact:true}).inputValue(),'1234567');
+  await page.getByLabel('Teléfono',{exact:true}).fill('70000001');
+  await page.getByLabel('Apellido',{exact:true}).fill('Editada');
+  await page.getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.getByText('70000001',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'Editar admin@example.test',exact:true}).click();
+  await page.getByLabel('Usuario (correo)',{exact:true}).fill('admin');
+  assert.equal(await page.getByLabel('Usuario (correo)',{exact:true}).evaluate(el=>el.checkValidity()),false);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Deshabilitar admin@example.test',exact:true}).click();
+  await page.getByRole('button',{name:'Deshabilitar',exact:true}).last().click();
+  await page.getByText('Administrador deshabilitado.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Crear administrador'}).click();
+  await page.getByLabel('CI',{exact:true}).fill('7654321');
+  await page.getByLabel('Nombre',{exact:true}).fill('Beto');
+  await page.getByLabel('Apellido',{exact:true}).fill('Segundo');
+  await page.getByLabel('Dirección',{exact:true}).fill('Edificio de prueba');
+  await page.getByLabel('Usuario (correo)',{exact:true}).fill('admin2@example.test');
+  await page.getByLabel('Contraseña inicial',{exact:true}).fill('fixture-password');
+  await page.getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.getByText('admin2@example.test',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Activar admin@example.test',exact:true}).click();
+  await page.getByRole('button',{name:'Activar',exact:true}).last().click();
+  await page.getByText('Administrador activado.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Deshabilitar admin2@example.test',exact:true}).click();
+  await page.getByRole('button',{name:'Deshabilitar',exact:true}).last().click();
+  await page.getByText('Administrador deshabilitado.',{exact:true}).waitFor();
   await page.locator('nav [data-page="backups"]').click();
   await page.getByRole('button',{name:'Crear respaldo ahora',exact:true}).click();
   await page.getByRole('button',{name:'Verificar integridad',exact:true}).click();
   await page.getByText('Integridad del respaldo verificada.',{exact:true}).waitFor();
   await page.locator('nav [data-page="audit"]').click();
-  await page.getByRole('cell').filter({hasText:/POST \/api\/payments\/reverse id=1 .* ok /}).waitFor();
+  await page.getByRole('cell').filter({hasText:/POST \/api\/payments\/reverse id=[0-9a-f-]{36} .* ok /}).waitFor();
   await page.locator('nav [data-page="routers"]').click();
   await page.getByRole('button', { name: 'Agregar router' }).click();
   await page.getByText('Configuración avanzada',{exact:true}).click();
   await page.getByLabel('Nombre', { exact: true }).fill('Router de prueba UI');
   await page.getByLabel('Adaptador', { exact: true }).selectOption('mikrotik-rest');
+  assert.equal(await page.getByLabel('Adaptador', { exact: true }).locator('option').count(), 4, 'Adaptadores: mikrotik, arris, openwrt y tr369 base');
+  assert.equal(await page.getByLabel('Adaptador', { exact: true }).locator('option[value="tr369-usp"]').count(), 1, 'TR-369 base disponible para registro manual');
   await page.getByLabel('IP de administración').fill('192.168.99.1');
   await page.getByLabel('Protocolo').selectOption('https');
   await page.getByLabel('Usuario', { exact: true }).fill('fixture-user');
@@ -138,11 +186,50 @@ try {
   await page.getByRole('button', { name: 'Guardar', exact: true }).click();
   await page.getByRole('heading', { name: 'Router de prueba UI' }).waitFor();
   await page.getByText('Sin probar', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Editar', exact: true }).count(), 0, 'Las acciones avanzadas no aparecen en el listado');
+  await page.getByLabel('Buscar router', { exact: true }).fill('192.168.99');
+  await page.getByRole('button', { name: 'Ver router Router de prueba UI', exact: true }).click();
+  await page.getByRole('heading', { name: 'Detalle del equipo', exact: true }).waitFor();
+  await page.getByText('Administración completa', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Volver a routers', exact: true }).click();
+  assert.equal(await page.getByLabel('Buscar router', { exact: true }).inputValue(), '192.168.99');
+  assert.equal(await page.getByRole('button', { name: 'Ver router Router de prueba UI', exact: true }).evaluate(el => el === document.activeElement), true);
+  await page.getByLabel('Buscar router', { exact: true }).fill('sin coincidencias');
+  await page.getByRole('button', { name: 'Limpiar búsqueda', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.querySelector('#main-sidebar').getBoundingClientRect().right <= 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'El listado de routers cabe en móvil');
+  await page.screenshot({ path: path.join(tmpdir(), 'nuwenet-router-list-mobile.png') });
+  await page.getByRole('button', { name: 'Ver router Router de prueba UI', exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'La ficha del router cabe en móvil');
+  await page.screenshot({ path: path.join(tmpdir(), 'nuwenet-router-detail-mobile.png') });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Editar', exact: true }).click();
   assert.equal(await page.getByLabel('Contraseña', { exact: true }).inputValue(), '');
   await page.getByLabel('Nombre', { exact: true }).fill('Router UI editado');
   await page.getByRole('button', { name: 'Guardar', exact: true }).click();
   await page.getByRole('heading', { name: 'Router UI editado' }).waitFor();
+  await page.getByRole('button', { name: 'Volver a routers', exact: true }).click();
+  await page.getByRole('button', { name: 'Configurar red del edificio', exact: true }).click();
+  await page.getByLabel('Edificio', { exact: true }).selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+  await page.getByRole('button', { name: 'Crear estructura inicial', exact: true }).click();
+  await page.getByRole('button', { name: 'Guardar borrador', exact: true }).click();
+  await page.getByText('Borrador guardado. Aún no se ha modificado la red.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '5. Revisar y aplicar', exact: true }).click();
+  await page.getByRole('heading', { name: 'Pendiente antes de aplicar', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Aplicar cambios revisados', exact: true }).isDisabled(), true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'El asistente de red cabe en móvil');
+  await page.screenshot({ path: path.join(tmpdir(), 'nuwenet-network-wizard-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Volver a equipos', exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Configurar red del edificio', exact: true }).click();
+  await page.getByLabel('Edificio', { exact: true }).selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+  assert.ok(await page.getByLabel('Nombre', { exact: true }).count() >= 3, 'Inventario persistido al volver a abrir el asistente');
+  await page.getByRole('button', { name: 'Volver a equipos', exact: true }).click();
+  await page.getByRole('button', { name: 'Ver router Router UI editado', exact: true }).click();
   await page.getByRole('button', { name: 'Quitar conexión' }).click();
   await page.getByRole('dialog').getByRole('button',{name:'Quitar',exact:true}).click();
   await page.getByText('Conecta tu primer router', { exact: true }).waitFor();
@@ -215,10 +302,11 @@ try {
   await page.getByRole('heading',{name:'Hogar 100',exact:true}).waitFor();
   await page.getByRole('button',{name:'Editar plan Hogar 100',exact:true}).click();
   const planForm=page.locator('#plan-form');
+  const planDialog=page.getByRole('dialog');
   assert.equal(await planForm.getByLabel('Precio mensual',{exact:true}).inputValue(),'150');
   await planForm.getByLabel('Nombre del plan',{exact:true}).fill('   ');
-  await planForm.getByRole('button',{name:'Guardar',exact:true}).click();
-  await planForm.getByRole('alert').filter({hasText:'Escribe el nombre del plan.'}).waitFor();
+  await planDialog.getByRole('button',{name:'Guardar',exact:true}).click();
+  await planDialog.getByRole('alert').filter({hasText:'Escribe el nombre del plan.'}).waitFor();
   await planForm.getByLabel('Nombre del plan',{exact:true}).fill('Hogar renovado');
   await planForm.getByLabel('Bajada (Mbps)',{exact:true}).fill('0');
   assert.equal(await planForm.getByLabel('Bajada (Mbps)',{exact:true}).evaluate(el=>el.checkValidity()),false);
@@ -226,16 +314,16 @@ try {
   await planForm.getByLabel('Subida (Mbps)',{exact:true}).fill('40');
   await planForm.getByLabel('Precio mensual',{exact:true}).fill('175.50');
   await page.route('**/api/plans/update',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Fallo temporal de prueba.'})}));
-  await planForm.getByRole('button',{name:'Guardar',exact:true}).click();
-  await planForm.getByRole('alert').filter({hasText:'Fallo temporal de prueba.'}).waitFor();
+  await planDialog.getByRole('button',{name:'Guardar',exact:true}).click();
+  await planDialog.getByRole('alert').filter({hasText:'Fallo temporal de prueba.'}).waitFor();
   assert.equal(await planForm.getByLabel('Nombre del plan',{exact:true}).inputValue(),'Hogar renovado');
   await page.unroute('**/api/plans/update');
   let attempts=0,releaseSave;
   const gate=new Promise(resolve=>{releaseSave=resolve;});
   await page.route('**/api/plans/update',async route=>{attempts++;await gate;await route.continue();});
-  await planForm.getByRole('button',{name:'Guardar',exact:true}).click();
+  await planDialog.getByRole('button',{name:'Guardar',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#plan-form')?.getAttribute('aria-busy')==='true');
-  assert.equal(await planForm.getByRole('button',{name:'Guardando…',exact:true}).isDisabled(),true);
+  assert.equal(await planDialog.getByRole('button',{name:'Guardando…',exact:true}).isDisabled(),true);
   await planForm.evaluate(form=>{form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
   releaseSave();
   await page.getByRole('heading',{name:'Hogar renovado',exact:true}).waitFor();
@@ -263,20 +351,21 @@ try {
   await page.locator('nav [data-page="customers"]').click();
   await page.getByRole('button',{name:'Editar',exact:true}).click();
   const customerForm=page.locator('#customer-form');
+  const customerDialog=page.getByRole('dialog');
   await page.getByLabel('Departamento',{exact:true}).fill('   ');
-  await customerForm.getByRole('button',{name:'Guardar',exact:true}).click();
-  await customerForm.getByRole('alert').filter({hasText:'Escribe el departamento.'}).waitFor();
+  await customerDialog.getByRole('button',{name:'Guardar',exact:true}).click();
+  await customerDialog.getByRole('alert').filter({hasText:'Escribe el departamento.'}).waitFor();
   await page.getByLabel('Departamento',{exact:true}).fill('201');
   await page.getByLabel('Teléfono (opcional)').fill('70000000');
   await page.route('**/api/customers/update',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Fallo temporal de departamento.'})}));
-  await customerForm.getByRole('button',{name:'Guardar',exact:true}).click();
-  await customerForm.getByRole('alert').filter({hasText:'Fallo temporal de departamento.'}).waitFor();
+  await customerDialog.getByRole('button',{name:'Guardar',exact:true}).click();
+  await customerDialog.getByRole('alert').filter({hasText:'Fallo temporal de departamento.'}).waitFor();
   assert.equal(await page.getByLabel('Teléfono (opcional)').inputValue(),'70000000');
   await page.unroute('**/api/customers/update');
   let customerAttempts=0,releaseCustomer;
   const customerGate=new Promise(resolve=>{releaseCustomer=resolve;});
   await page.route('**/api/customers/update',async route=>{customerAttempts++;await customerGate;await route.continue();});
-  await customerForm.getByRole('button',{name:'Guardar',exact:true}).click();
+  await customerDialog.getByRole('button',{name:'Guardar',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#customer-form')?.getAttribute('aria-busy')==='true');
   await customerForm.evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
   releaseCustomer();await customerForm.waitFor({state:'hidden'});
@@ -285,7 +374,7 @@ try {
   const beforeCustomer=await (await page.request.get(`http://127.0.0.1:${port}/api/state`)).json();
   await page.getByRole('button',{name:'Editar',exact:true}).click();
   await page.getByLabel('Plan de internet (opcional)').selectOption('');
-  await customerForm.getByRole('button',{name:'Guardar',exact:true}).click();
+  await customerDialog.getByRole('button',{name:'Guardar',exact:true}).click();
   await customerForm.waitFor({state:'hidden'});
   await page.getByText('Sin plan · Sin velocidad asignada',{exact:true}).waitFor();
   const withoutPlan=await (await page.request.get(`http://127.0.0.1:${port}/api/state`)).json();
@@ -295,7 +384,7 @@ try {
   await page.getByRole('button',{name:'Editar',exact:true}).click();
   assert.equal(await page.getByLabel('Plan de internet (opcional)').inputValue(),'');
   await page.getByLabel('Plan de internet (opcional)').selectOption(String(plansState.plans[0].id));
-  await customerForm.getByRole('button',{name:'Guardar',exact:true}).click();
+  await customerDialog.getByRole('button',{name:'Guardar',exact:true}).click();
   await customerForm.waitFor({state:'hidden'});
   await page.getByText('Hogar renovado · 120 / 40 Mbps',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Editar',exact:true}).click();
@@ -317,7 +406,7 @@ try {
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Departamentos no desborda horizontalmente');
       await page.screenshot({path:path.join(tmpdir(),`nuwenet-customers-${width}-${colorScheme}.png`)});
       await page.getByRole('button',{name:'Editar',exact:true}).click();
-      assert.equal(await customerForm.getByRole('button',{name:'Guardar',exact:true}).isVisible(),true);
+      assert.equal(await customerDialog.getByRole('button',{name:'Guardar',exact:true}).isVisible(),true);
       await page.keyboard.press('Escape');await customerForm.waitFor({state:'hidden'});
     }
   }
@@ -333,14 +422,14 @@ try {
   assert.equal(await page.getByRole('button',{name:'Consumo mensual',exact:true}).evaluate(el=>el===document.activeElement),true);
   await page.getByRole('button',{name:'Cambiar IP',exact:true}).click();
   await page.getByLabel('IP privada',{exact:true}).fill('no-es-ip');
-  await page.locator('#customer-action-form').getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Guardar',exact:true}).click();
   await page.waitForFunction(()=>!!document.querySelector('#customer-action-form [role="alert"]')?.textContent);
   await page.getByLabel('IP privada',{exact:true}).fill('192.168.88.50');
-  await page.locator('#customer-action-form').getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Guardar',exact:true}).click();
   await page.getByText('192.168.88.50',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Cambiar IP',exact:true}).click();
   await page.getByLabel('IP privada',{exact:true}).fill('');
-  await page.locator('#customer-action-form').getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Guardar',exact:true}).click();
   await page.getByText('Sin IP',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Portal del residente',exact:true}).click();
   await page.getByRole('button',{name:'Generar y entregar enlace',exact:true}).click();
@@ -352,7 +441,8 @@ try {
   await page.getByRole('button',{name:'Regenerar e invalidar anterior',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#customer-action-form')?.getAttribute('aria-busy')==='true');
   await page.keyboard.press('Escape');
-  assert.equal(await page.locator('#customer-action-form').isVisible(),true,'No se cierra una operación pendiente');
+  assert.equal(await page.getByRole('dialog').isVisible(),true,'No se cierra una operación pendiente');
+  assert.equal(await page.locator('#customer-action-form').count(),1,'El formulario pendiente sigue montado');
   await page.locator('#customer-action-form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
   releaseRotation();await page.getByRole('heading',{name:/nica vez/}).waitFor();
   assert.equal(rotations,1);await page.unroute('**/api/customers/portal-link');
@@ -387,9 +477,25 @@ try {
       }
     }
   }
+  const resident = await browser.newPage();
+  resident.on('pageerror', error => errors.push(error.message));
+  for (const width of [1440, 390]) {
+    await resident.setViewportSize({ width, height: 900 });
+    for (const colorScheme of ['light', 'dark']) {
+      await resident.emulateMedia({ colorScheme });
+      for (const route of [`/portal?token=${new URL(holderLink).searchParams.get('token')}`, '/corte']) {
+        await resident.goto(`http://127.0.0.1:${port}${route}`);
+        if (route.startsWith('/portal')) await resident.locator('#portal-content').waitFor({ state: 'visible' });
+        assert.equal(await resident.locator('html').getAttribute('data-theme'), colorScheme);
+        assert.equal(await resident.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Las páginas públicas caben en la pantalla');
+        await resident.screenshot({ path: path.join(tmpdir(), `nuwenet-public-${route.startsWith('/portal') ? 'portal' : 'corte'}-${width}-${colorScheme}.png`) });
+      }
+    }
+  }
+  await resident.close();
   assert.deepEqual(errors, [], 'Sin errores de JavaScript en el navegador');
   assert.ok(!serverErrors.includes('UI_TEST_OUTBOUND_HTTP_BLOCKED'), 'El recorrido no debe intentar contactar integraciones HTTP');
-  console.log('Interfaz verificada: setup, altas, edición, archivo/restauración, cobros, recibos, reversión, configuración, usuarios, respaldos, auditoría, vista móvil, cuenta shadcn y planes/departamentos shadcn (búsqueda persistente, validaciones, reintento, envío único, precio histórico/futuro y velocidades).');
+  console.log('Interfaz verificada: setup, altas, edición, archivo/restauración, cobros, recibos, reversión, configuración, usuarios, respaldos, auditoría, vista móvil, cuenta shadcn y planes/departamentos shadcn (búsqueda persistente, validaciones, reintento, envío único, precio histórico/futuro y velocidades), equipos de red (4 adaptadores, nivel de administración) y asistente de red del edificio.');
 } catch(error) {
   const page=browser?.contexts()[0]?.pages()[0];
   if(page){await page.screenshot({path:path.join(tmpdir(),'nuwenet-ui-smoke-failure.png'),fullPage:true});console.error((await page.locator('#view').innerText()).slice(0,1800));}

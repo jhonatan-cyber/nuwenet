@@ -1,4 +1,5 @@
 import type { DatabaseService } from '../database/database.service';
+import { uuidv7 } from './uuid';
 
 // B8: registro de seguridad independiente del rollback del negocio. Se escribe
 // en su propia transacción (security_events) para que un rollback de la
@@ -16,7 +17,7 @@ export async function logSecurity(
     detail: (event.detail || '').slice(0, 500),
   };
   try {
-    await database.write(tx => tx`INSERT INTO security_events(created_at,actor,ip,event,detail) VALUES (${record.created_at},${record.actor},${record.ip},${record.name},${record.detail})`);
+    await database.write(tx => tx`INSERT INTO security_events(id,created_at,actor,ip,event,detail) VALUES (${uuidv7()},${record.created_at},${record.actor},${record.ip},${record.name},${record.detail})`);
   } catch (error) {
     console.error(JSON.stringify({ security: 'write_failed', event: record.name, error: String((error as Error)?.message || error) }));
   }

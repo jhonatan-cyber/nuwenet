@@ -2,14 +2,18 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ArrisAdapter } from './adapters/arris.adapter';
 import { MikroTikAdapter } from './adapters/mikrotik.adapter';
 import { OpenWrtAdapter } from './adapters/openwrt.adapter';
+import { Tr369Adapter } from './adapters/tr369.adapter';
 import type { RouterAdapter, RouterCredentials, RouterTarget } from './router.types';
 import { routerOrigin, validateRouterHost } from './router-network';
 
 @Injectable()
 export class AdapterRegistry {
   private readonly adapters: RouterAdapter[];
-  constructor(arris: ArrisAdapter, mikrotik: MikroTikAdapter, openwrt: OpenWrtAdapter) {
-    this.adapters = [arris, mikrotik, openwrt];
+  constructor(arris: ArrisAdapter, mikrotik: MikroTikAdapter, openwrt: OpenWrtAdapter, tr369?: Tr369Adapter) {
+    // tr369 es opcional para no romper construcciones manuales existentes;
+    // el módulo NestJS siempre lo provee. No participa en la detección
+    // automática: requiere controlador USP habilitado por modelo.
+    this.adapters = [arris, mikrotik, openwrt, ...(tr369 ? [tr369] : [])];
   }
   list() { return this.adapters.map(adapter => adapter.description); }
   async detect(host: string, credentials: RouterCredentials) {

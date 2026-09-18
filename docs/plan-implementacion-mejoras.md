@@ -4,7 +4,7 @@ Fecha: 12 de septiembre de 2026. Estado: en implementación; fases A y B (B1–B
 
 Objetivo: completar la operación con residentes, corregir los riesgos detectados y preparar el crecimiento sin perder la integridad de cobros, el aislamiento entre edificios ni el control de red existente.
 
-Este documento organiza el trabajo y registra los avances verificados. Las estimaciones son orientativas para una persona que conoce el proyecto; excluyen esperas por equipos, banco, proveedor de WhatsApp e infraestructura.
+Este documento organiza el trabajo y registra los avances verificados. Las estimaciones son orientativas para una persona que conoce el proyecto; excluyen esperas por equipos e infraestructura.
 
 **Registro de ejecución — 12/09/2026**
 
@@ -15,7 +15,7 @@ Este documento organiza el trabajo y registra los avances verificados. Las estim
 - [x] Tipos sin errores, compilación y recorrido UI ampliado aprobados; aislamiento entre edificios y portal aprobados. Revisión móvil/escritorio con ambos temas.
 - [x] Diálogos de consumo, portal/enlace único, regeneración, cambio de titular, IP, archivo/restauración y corte/reactivación migrados a React/shadcn. La gráfica de consumo conserva su implementación compartida con el portal; Estado de cuenta sigue navegando a los cobros filtrados.
 - [x] Validación ampliada: error/reintento en consumo, selección de día con teclado, IP inválida/asignación/eliminación, regeneración sin doble envío, enlace disponible aunque falle la recarga, invalidación del acceso anterior y cambio de titular. Diálogos comprobados en 1440/390 px, claro/oscuro, sin desbordamiento horizontal.
-- [x] Mensualidades y pagos migrados a React/shadcn (`BillingPanel` + `billing-store`; generar, pagar/abonar, revertir, recibo/impresión, vencimientos, paginación y estado de cuenta). Reportes WhatsApp/banco conservados vía `data-action`.
+- [x] Mensualidades y pagos migrados a React/shadcn (`BillingPanel` + `billing-store`; generar, pagar/abonar, revertir, recibo/impresión, vencimientos, paginación y estado de cuenta).
 - [x] Operaciones migradas a React/shadcn (`OperationsPanel` + `operations-store`; edificios, configuración con `operations-form`, usuarios, respaldos y auditoría). Eliminado `scripts/operations.js`.
 - [x] Routers migrados a React/shadcn (`RoutersPanel` + `routers-store`; listado, detalle, controles por IP, tráfico, descubrimiento, vinculación, servicios y aprovisionamiento). Eliminado `scripts/routers.js`. F2–F3 del panel completadas: cuenta, planes, departamentos, cobros, operaciones y routers.
 
@@ -26,25 +26,25 @@ Este documento organiza el trabajo y registra los avances verificados. Las estim
 - [x] Pruebas de creación/edición, precio histórico y futuro, velocidades y aislamiento entre edificios; vista móvil/escritorio y ambos temas. Retirados 16 selectores antiguos de planes.
 - [x] Listado y formularios de departamentos implementados en la siguiente entrega. La migración completa de F2–F3 sigue pendiente.
 
-Detalle y evidencia de las entregas (cuenta, planes, departamentos y cobros) en [estilos y componentes](estilos-y-componentes.md).
+Detalle y evidencia de las entregas (cuenta, planes, departamentos y cobros).
 
 **Actualización — 13/09/2026: piloto shadcn**
 
 - [x] Integración React + Tailwind y componentes locales shadcn Button, Input, Card, Dialog y Switch, con configuración y licencia.
 - [x] Preferencias y perfil migrados a una isla React tipada; estado compartido con la barra del panel, persistencia y cambio de contraseña real.
-- [x] CSS nuevo delimitado, sin Preflight global; retirados selectores exclusivos del diálogo anterior. [Detalles de la migración](estilos-y-componentes.md).
+- [x] CSS nuevo delimitado, sin Preflight global; retirados selectores exclusivos del diálogo anterior.
 - [x] Validación del piloto: tipos sin errores/advertencias/hints, compilación sin advertencias CSS, recorrido UI ampliado y prueba del portal aprobados; revisión visual de claro/oscuro, móvil y escritorio. La prueba de contraseña usa una cuenta temporal.
 - [ ] Migración de los demás módulos a componentes: continúa pendiente en F2–F3.
 
-- [x] Limpieza inicial de estilos (adelanto parcial de F3): retiradas 35 apariciones de clases sin referencias y 839 declaraciones reemplazadas por reglas posteriores; eliminados comentarios de temas antiguos. Detalles y propuesta de migración gradual a shadcn en [estilos y componentes](estilos-y-componentes.md). F3 no se considera terminado: la conversión de vistas a componentes sigue pendiente.
+- [x] Limpieza inicial de estilos (adelanto parcial de F3): retiradas 35 apariciones de clases sin referencias y 839 declaraciones reemplazadas por reglas posteriores; eliminados comentarios de temas antiguos. Detalles y propuesta de migración gradual a shadcn. F3 no se considera terminado: la conversión de vistas a componentes sigue pendiente.
 
-- [x] A1. Servidor UI con `--no-env-file`, lista permitida de variables del sistema, PostgreSQL y respaldos temporales, WhatsApp deshabilitado y bloqueo de HTTP saliente. Limpieza limitada al directorio temporal verificado. Captura de errores fuera de `data/`.
+- [x] A1. Servidor UI con `--no-env-file`, lista permitida de variables del sistema, PostgreSQL y respaldos temporales, bloqueo de HTTP saliente. Limpieza limitada al directorio temporal verificado. Captura de errores fuera de `data/`.
 - [x] A2. Smoke UI actualizado y aprobado: confirma vencimientos, archivo, restauración, reactivación y eliminación de conexión; utiliza el formulario actual de administradores, opciones avanzadas de router y etiquetas actuales de respaldo/auditoría. Verifica persistencia tras recarga y vista móvil.
 - [x] A3. Código de instalación ausente e incorrecto rechazados por HTTP; código válido utilizado desde el navegador. La suite de autenticación conserva y aprueba la instalación local sin código.
 - [x] A4 (local). Añadido `bun run verify`: tipos, compilación, suite e interfaz en secuencia, con una sola compilación.
 - [ ] A4 (remoto). Integración continua pendiente: no hay repositorio Git ni proveedor CI configurados en esta carpeta.
 - [x] A5. Suite PostgreSQL ejecutada con `.env`: 1 prueba aprobada, 0 fallos. Utiliza un esquema `nuwenet_test_*` dentro de `nuwenet`, dos instancias y limpieza al terminar; avisos y portal de corte deshabilitados en los procesos de prueba.
-- [x] A6. README, operación y guía Pro actualizados para WhatsApp, capacidades ARRIS/OpenWrt, consumo persistente y límites de verificación física. Diagnóstico del 11/09 identificado como histórico.
+- [x] A6. README, operación y guía Pro actualizados para capacidades ARRIS/OpenWrt, consumo persistente y límites de verificación física. Diagnóstico del 11/09 identificado como histórico.
 
 Evidencia: `bun run verify` terminó con código 0: tipos sin errores/advertencias, compilación correcta, 37 pruebas aprobadas y una omitida por motor, más el recorrido UI completo. La prueba omitida fue ejecutada por separado mediante `bun test ./test/postgres.test.js` y aprobó. Estas pruebas no acreditan cortes físicos ni envíos reales.
 
@@ -55,7 +55,7 @@ Archivos de esta entrega: `scripts/smoke-ui.mjs`, `scripts/ui-test-server.mjs`, 
 - [x] B1. Migración 21 (`access_issued_at`, `access_expires_at`, `access_version`): enlaces existentes conservados sin caducidad, solo con emisión registrada. Nuevo ajuste `portal_link_days` (0 = sin caducidad) aplicado al crear/rotar. Pagos e historial intactos.
 - [x] B2. `POST /api/customers/portal-link`: rotación atómica, solo super-admin o admin autorizado del edificio; invalida el anterior de inmediato y audita sin guardar el token.
 - [x] B3. `POST /api/customers/change-holder`: cambio explícito de titular (nombre + teléfono opcional) que invalida el acceso anterior; separado de `customers/update`. La entrega del nuevo enlace es otra operación (modal “Portal del residente”).
-- [x] B4. Validación única del portal para datos, tráfico, consumo (`UsageService.history`) y reportes: formato, archivo, edificio deshabilitado y caducidad con el mismo mensaje genérico. Dashboard muestra emisión/caducidad/versión y acciones de regenerar/cambio.
+- [x] B4. Validación única del portal para datos, tráfico, consumo (`UsageService.history`): formato, archivo, edificio deshabilitado y caducidad con el mismo mensaje genérico. Dashboard muestra emisión/caducidad/versión y acciones de regenerar/cambio.
 - [x] Verificación: `bun run check` y `bun run build` sin errores; suites `pro`, `usage`, `auth`, `building-isolation`, `pro-http`, `reliability`, `integration` y `router-adapters` aprobadas por separado; script ad-hoc B1–B4 (rotación concurrente, expiración, cambio titular, auditoría sin token) aprobado. `bun test ./test` completo no se pudo cerrar en una sola pasada en Windows (tiempos de arranque de servidores); `department-adapter`/`router-detection` fallan al cargarse juntos por `require(@nestjs/common)` frente a import ESM, preexistente y ajeno a este cambio.
 
 Archivos de esta entrega B: `apps/api/src/database/database.service.ts` (migración 21), `apps/api/src/management/management.service.ts`, `usage.service.ts`, `management.controllers.ts`, `dto.ts`, `apps/web/src/scripts/dashboard.js`. Siguen pendientes B5–B9 (hash de tokens, rate-limit central, guards, auditoría transaccional) y fases C–G.
@@ -74,7 +74,7 @@ Archivos de esta entrega B5–B9: `database.service.ts` (migraciones 22–23 + r
 **Registro de ejecución — 13/09/2026 (Fase C)**
 
 - [x] C4. El aviso de una orden ya no decide su resultado: si `notify` falla tras aplicarse la regla, la orden conserva `applied`/`simulated` y solo se registra el fallo en stderr. Nueva prueba en `test/tasks.test.js` (el aviso caído no repite la orden).
-- [x] C1/C2. Cada trabajo del tick (`linked`, `network`, `notifications`, más `usage` y las tareas por intervalo) falla aislado con aviso en log; la exclusión distribuida por `task_locks` y el orden por departamento se conservan.
+- [x] C1/C2. Cada trabajo del tick (`linked`, `network`, más `usage` y las tareas por intervalo) falla aislado con aviso en log; la exclusión distribuida por `task_locks` y el orden por departamento se conservan.
 - [x] C3. La cola procesa hasta 10 órdenes por pasada con presupuesto de 4 minutos; el timeout REST de 12 s se mantiene.
 - [x] C5/C6. Diagnóstico por tarea en `settings` (`task:<nombre>` con última ejecución, éxito, duración y error), expuesto en `automation.tasks` y rezago de cola en `automation.queue` del estado, conteos en `GET /api/health` y tabla Tareas automáticas en Actividad. Umbrales iniciales en la guía de operación. El contrato anterior del tick (propagar el error) se actualizó en `test/usage.test.js`.
 - [x] Verificación: `tsc` API y `astro check` limpios, compilación correcta, smoke UI y suites `tasks/usage/reliability/pro/auth/integration/router-adapters/building-isolation/pro-http` en verde por grupos.
@@ -97,7 +97,7 @@ Archivos de esta entrega D: `backup-crypto.ts` (nuevo), `backup.service.ts`, `ba
 
 La revisión del 12/09/2026 obtuvo: comprobación de tipos sin errores ni advertencias, compilación correcta, 37 pruebas aprobadas, ninguna fallida y una prueba PostgreSQL omitida. La prueba general de interfaz no terminó: heredaba SETUP_TOKEN y, al aislar esa variable, no atendía la confirmación de revisión de vencimientos.
 
-La inspección histórica encontró un edificio, un ARRIS registrado y ningún departamento. Faltan MikroTik central, datos bancarios, configuración del portal accesible por residentes y credenciales de WhatsApp; el envío está deshabilitado. El estado guardado del ARRIS no equivale a una comprobación física reciente.
+La inspección histórica encontró un edificio, un ARRIS registrado y ningún departamento. Faltan MikroTik central, configuración del portal accesible por residentes. El estado guardado del ARRIS no equivale a una comprobación física reciente.
 
 Se conservan los importes en centavos, las claves de idempotencia, las reversiones con historial, los bloqueos manuales, la separación por edificio y las órdenes persistentes. No se presume capacidad para un número determinado de clientes hasta medirla.
 
@@ -130,7 +130,7 @@ Total orientativo: 21–34 días efectivos, aproximadamente 5–7 semanas de tra
 - A3. Conservar escenarios separados para instalación local y creación inicial protegida por token. El aislamiento del smoke test no debe suprimir la prueba del requisito de seguridad.
 - A4. Establecer una ejecución reproducible de `bun run check`, `bun run test` y `bun run test:ui`, en secuencia por la caché compartida de Astro. Incorporarla a integración continua cuando se disponga del repositorio y proveedor; en esta carpeta no se encontró `.git`.
 - A5. Ejecutar la suite PostgreSQL con esquemas temporales en `nuwenet` y registrar sus resultados.
-- A6. Actualizar README y guías: WhatsApp implementado frente a habilitado; ARRIS con controles limitados; OpenWrt de consulta; acumulación histórica de consumo; diferencia entre estado guardado y prueba reciente. Mantener los diagnósticos antiguos fechados como históricos.
+- A6. Actualizar README y guías: ARRIS con controles limitados; OpenWrt de consulta; acumulación histórica de consumo; diferencia entre estado guardado y prueba reciente. Mantener los diagnósticos antiguos fechados como históricos.
 
 Archivos principales: `scripts/smoke-ui.mjs`, `test/`, `README.md`, `docs/operacion.md`, `docs/nuwenet-pro.md`, `docs/puesta-en-marcha-pro.md`.
 
@@ -141,7 +141,7 @@ Criterio de aceptación: el flujo de interfaz termina con configuración local p
 - B1. Añadir una nueva migración para el ciclo de vida del acceso del residente. Decisión inicial: enlaces revocables con fecha de emisión y caducidad configurable; no imponer una caducidad arbitraria a enlaces existentes. La transición debe informar al administrador y permitir reemplazarlos sin afectar pagos ni historial.
 - B2. Implementar regeneración del enlace desde la ficha del departamento. Solo podrán hacerlo el super-admin y un administrador autorizado del edificio. La rotación será atómica, invalidará inmediatamente el enlace anterior y quedará auditada sin guardar el token en el evento.
 - B3. Añadir una acción explícita de cambio de titular que permita invalidar el acceso anterior. Separarla de una simple corrección de nombre. La entrega del nuevo enlace será una operación distinta de su generación.
-- B4. Aplicar la misma validación de token, expiración, archivo y edificio deshabilitado a datos del portal, consumo, tráfico y reportes. Conservar respuestas que no revelen datos de otros departamentos.
+- B4. Aplicar la misma validación de token, expiración, archivo y edificio deshabilitado a datos del portal, consumo, tráfico. Conservar respuestas que no revelen datos de otros departamentos.
 - B5. Evitar tokens en logs, errores y herramientas de diagnóstico. Mantener `no-referrer` y `no-store`. Diseñar el almacenamiento de tokens como hash si se acepta que el enlace completo solo sea visible al emitirlo; migrar los enlaces existentes mediante hash preservando su validez y cambiar la interfaz que hoy recupera el token desde el estado.
 - B6. Limitar las consultas del portal, especialmente tráfico en vivo, por identidad/IP. Añadir una caché breve o agrupación de consultas por router para evitar que cada visitante dispare una lectura completa. En varias instancias, usar coordinación compartida o un límite central.
 - B7. Sustituir gradualmente las reglas de autorización basadas en rutas dentro de `main.ts` por guards y metadatos de roles. Conservar pruebas de aislamiento. Distinguir un actor de sistema explícito de la ausencia accidental de contexto, que hoy permite acceso amplio en varios servicios.
@@ -154,16 +154,15 @@ Criterio de aceptación: el enlace antiguo falla en todos los endpoints después
 
 **5. Fase C — Automatizaciones y visibilidad operativa**
 
-- C1. Separar facturación, vencimientos, red, notificaciones, consumo, monitoreo y respaldos en trabajos con manejo de errores independiente. Mantener al inicio el mismo despliegue si resulta suficiente; no introducir infraestructura de colas antes de justificarla.
+- C1. Separar facturación, vencimientos, red, consumo, monitoreo y respaldos en trabajos con manejo de errores independiente. Mantener al inicio el mismo despliegue si resulta suficiente; no introducir infraestructura de colas antes de justificarla.
 - C2. Conservar exclusión distribuida por tarea, renovación de concesiones y recuperación tras caída. Si un trabajador pierde su concesión, debe dejar de reclamar trabajo; probar la competencia entre dos instancias y el orden por departamento.
 - C3. Mantener límites de concurrencia por router y orden de comandos por departamento. Añadir límites por lote y tiempos máximos para que un equipo lento no monopolice el procesamiento.
-- C4. Desacoplar el resultado de una orden de red de su notificación: si la regla se aplicó y falló el aviso, no marcar el control de red como fallido ni repetirlo por esa causa.
 - C5. Mostrar última ejecución, último éxito, duración y último error por tarea. Diferenciar proceso disponible, base disponible, router inaccesible, cola atrasada y respaldo antiguo. Evitar que una caída de router vuelva no disponible toda la API.
 - C6. Definir diagnósticos de salud y registros estructurados sin secretos. Establecer umbrales iniciales para retraso de colas, fallos repetidos y antigüedad del respaldo, ajustados con el piloto.
 
-Archivos principales: `scheduler.service.ts`, `management.service.ts`, `notifier.service.ts`, `usage.service.ts`, módulos API y vistas de operaciones.
+Archivos principales: `scheduler.service.ts`, `management.service.ts`, `usage.service.ts`, módulos API y vistas de operaciones.
 
-Criterio de aceptación: un router que no responde o un proveedor de avisos caído no impide facturación ni respaldo; reiniciar durante un trabajo no duplica pagos; dos instancias no ejecutan simultáneamente una orden del mismo departamento; el panel permite identificar la tarea afectada.
+Criterio de aceptación: un router que no responde no impide facturación ni respaldo; reiniciar durante un trabajo no duplica pagos; dos instancias no ejecutan simultáneamente una orden del mismo departamento; el panel permite identificar la tarea afectada.
 
 **6. Fase D — Respaldo y recuperación**
 
@@ -184,14 +183,12 @@ Criterio de aceptación: restauración completa demostrada en un destino nuevo, 
 - E2. Actualizar la matriz de compatibilidad por adaptador, modelo, firmware, lectura, escritura y prueba física realizada. Verificar documentación oficial vigente de cada proveedor antes de aprovisionar servicios o permisos; revalidar los hallazgos de guías antiguas contra el código actual.
 - E3. Registrar MikroTik, comprobar acceso y asignarlo al edificio. Respaldar configuración del equipo y documentar retirada de reglas NuweNet. ARRIS no sustituye al central de automatización; OpenWrt conserva su alcance de consulta.
 - E4. Crear un plan y un departamento piloto con IP/MAC reales. Verificar que el tráfico atraviesa el central y evaluar VLAN, DHCP, FastTrack, IPv6 y rutas de retorno. La compatibilidad se acreditará en esa topología, sin extrapolarla a otros equipos.
-- E5. Configurar datos bancarios y QR emitido por la entidad elegida. Verificar titular, importe y vigencia. Los reportes seguirán requiriendo comprobación manual del ingreso. Usar documentación bancaria vigente si se solicita QR dinámico; no inventar formatos.
-- E6. Configurar WhatsApp, plantilla, webhook y seguimiento. Revisar la cola acumulada antes de habilitar el envío. Preparar el texto y destinatario del mensaje piloto; enviarlo solo con autorización explícita para ese mensaje.
 - E7. Ejecutar con el departamento piloto: alta, mensualidad, abono, reporte y aprobación, pago total, corte por vencimiento, reactivación, bloqueo manual conservado, reinicio, caída de router y recuperación. Verificar consumo y mostrar huecos o estimaciones; no tratarlo como medición fiscal certificada.
 - E8. Observar al menos siete días y simular un cierre mensual en entorno de pruebas. Abrir el servicio gradualmente a más departamentos únicamente después de cumplir los criterios.
 
-Datos externos necesarios: equipo y acceso administrativo, topología y servidor, banco/QR, datos del departamento piloto, cuenta y plantilla de WhatsApp, y responsable operativo. Su falta no bloquea A–D ni F.
+Datos externos necesarios: equipo y acceso administrativo, topología y servidor, datos del departamento piloto, y responsable operativo. Su falta no bloquea A–D ni F.
 
-Criterio de aceptación: evidencia de corte y reactivación físicos, acceso al portal durante la suspensión, cobro correcto sin duplicados, funcionamiento del respaldo y entrega confirmada del mensaje autorizado. No declarar listo el flujo WhatsApp si solo se recibió aceptación del proveedor. Un fallo de integración puede dejar esa función deshabilitada, pero debe registrarse como alcance pendiente.
+Criterio de aceptación: evidencia de corte y reactivación físicos, acceso al portal durante la suspensión, cobro correcto sin duplicados, funcionamiento del respaldo. Un fallo de integración puede dejar esa función deshabilitada, pero debe registrarse como alcance pendiente.
 
 **8. Fase F — Mantenibilidad y frontend**
 
@@ -220,19 +217,18 @@ Entregas sugeridas, cada una revisable por separado: (1) pruebas y documentació
 
 Antes de cambios de esquema: crear y verificar respaldo, probar la migración en copia y definir compatibilidad con la versión anterior. Preferir ampliar el esquema y migrar datos antes de retirar columnas. No ejecutar una restauración para revertir una aplicación si eso descartaría cobros posteriores: usar corrección hacia adelante o un procedimiento explícito de conciliación.
 
-Para enlaces revocados, una reversión de software no debe volver a habilitarlos. Para red, registrar las reglas propias y retirar únicamente esas reglas; no restablecer indiscriminadamente el router. Para WhatsApp, deshabilitar futuros envíos no revierte mensajes ya enviados. Los cambios de configuración deben conservar sus valores anteriores en almacenamiento protegido.
+Para enlaces revocados, una reversión de software no debe volver a habilitarlos. Para red, registrar las reglas propias y retirar únicamente esas reglas; no restablecer indiscriminadamente el router. Los cambios de configuración deben conservar sus valores anteriores en almacenamiento protegido.
 
-Responsabilidades propuestas: desarrollo implementa y prueba; el dueño del sistema aporta asignaciones y criterios de operación; administración verifica cobros y datos bancarios; quien administra la red ejecuta el piloto físico y su recuperación. Una persona puede cubrir varios roles.
+Responsabilidades propuestas: desarrollo implementa y prueba; el dueño del sistema aporta asignaciones y criterios de operación; administración verifica cobros; quien administra la red ejecuta el piloto físico y su recuperación. Una persona puede cubrir varios roles.
 
 **11. Criterio de finalización del plan**
 
 - [x] Pruebas de interfaz reparadas y suites reproducibles localmente; resultados PostgreSQL documentados. CI remota pendiente en A4.
 - [x] B1–B4: rotación/revocación del portal, tratamiento de enlaces existentes y validación coherente en todos los endpoints. Permisos comprobados vía aislamiento por edificio. Quedan B5–B9.
 - [x] B5–B9: enlaces como hash con emisión única, límites del portal y caché de tráfico, guards por rol con sistema explícito, eventos de seguridad independientes y auditoría estructurada sin descarte silencioso (retención 180 días, fallos visibles vía stderr y `/api/health`).
-- [x] Tareas independientes, recuperación y exclusión entre instancias verificadas (Fase C: avisos desacoplados de la red, diagnóstico por tarea en Actividad/estado/salud, presupuesto de 4 min y tope de 10 por pasada, umbrales en la guía de operación; `test/tasks.test.js`).
+- [x] Tareas independientes, recuperación y exclusión entre instancias verificadas (Fase C: diagnóstico por tarea en Actividad/estado/salud, presupuesto de 4 min y tope de 10 por pasada, umbrales en la guía de operación; `test/tasks.test.js`).
 - [x] Respaldos protegidos, copia externa y restauración ensayada (Fase D: paquete AES-256-GCM con clave separada, custodia/rotación/ACL, streaming, compatibilidad heredada, `pg_restore` al esquema de prueba en `nuwenet`, RPO 24 h/RTO 2 h; `test/backup.test.js`).
 - [ ] Matriz de routers actualizada y piloto físico documentado.
-- [ ] Banco/QR y WhatsApp validados o registrados explícitamente como integración pendiente.
 - [ ] Código dividido y frontend crítico con comprobación estática.
 - [ ] Capacidad medida para el volumen acordado y decisión de concurrencia justificada.
 - [ ] Manual de operación, recuperación y diagnóstico actualizado con los resultados finales.

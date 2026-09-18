@@ -3,7 +3,6 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type { Request, Response, NextFunction } from 'express';
-import { raw } from 'express';
 import path from 'node:path';
 import { createServer } from 'node:http';
 import { AppModule } from './app.module';
@@ -15,6 +14,12 @@ import { RolesGuard } from './common/roles.guard';
 import { Reflector } from '@nestjs/core';
 import { DatabaseService } from './database/database.service';
 import { validateRouterHost } from './routers/router-network';
+
+// Los identificadores son UUID v7: las rutas con id se reconocen por su forma
+// (un patrón numérico ya no coincide con ningún router real).
+const uuidPath = '[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const routerDevicesRoute = new RegExp(`^/routers/${uuidPath}/devices$`);
+const routerServicesRoute = new RegExp(`^/routers/${uuidPath}/services$`);
 
 // Límite de peticiones en memoria (una instancia): clave IP+path, ventana deslizante.
 const rateBuckets = new Map<string, number[]>();
@@ -41,7 +46,6 @@ async function bootstrap() {
   }
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   const auth = app.get(AuthService);
-  app.use('/api/whatsapp/webhook',raw({type:'application/json',limit:'64kb'}));
   if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY.split(',').map(v => v.trim()));
   app.use((_req:Request,res:Response,next:NextFunction)=>{res.setHeader('Referrer-Policy','no-referrer');next();});
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -53,9 +57,6 @@ async function bootstrap() {
     // por IP y además se sirve desde una caché breve por router (ver
     // ManagementService.portalTraffic). En varias instancias este límite es
     // por instancia; el límite central queda pendiente (ver plan fase B6).
-    if (req.method === 'POST' && req.path === '/portal/report' && !checkRate(req, 10, 60_000)) {
-      return res.status(429).json({ error: 'Demasiados reportes. Espera un minuto.' });
-    }
     if (req.method === 'GET' && req.path === '/portal/traffic' && !checkRate(req, 20, 60_000)) {
       return res.status(429).json({ error: 'Demasiadas consultas de tráfico. Espera un minuto.' });
     }
@@ -72,7 +73,7 @@ async function bootstrap() {
   // Only bootstrap and session endpoints are public, including on an empty database.
   app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (['/auth/status','/auth/setup','/auth/login','/auth/logout','/auth/me','/health','/whatsapp/webhook'].includes(req.path) || ['/portal','/portal/report','/portal/traffic','/portal/usage','/portal/notice'].includes(req.path)) return next();
+      if (['/auth/status','/auth/setup','/auth/login','/auth/logout','/auth/me','/health'].includes(req.path) || ['/portal','/portal/traffic','/portal/usage','/portal/notice'].includes(req.path)) return next();
       const cookies = auth.parseCookies(req.headers.cookie);
       const user = await auth.validate(cookies['nuwenet_session']);
       if (!user) return res.status(401).json({ error: 'Inicia sesión para continuar.' });
@@ -82,11 +83,10 @@ async function bootstrap() {
       // Red y administración global: solo el super-admin (dueño del sistema).
       // Incluye altas de usuarios, edificios, routers y equipo central.
       const superOnly =
-        /^\/notifications(\/|$)/.test(route) ||
-        /^\/(audit|backups)(\/|$)/.test(route) ||
+        /^\/(audit|backups|retired-rows)(\/|$)/.test(route) ||
         /^\/auth\/users(\/|$)/.test(route) ||
-        (/^\/buildings(\/|$)/.test(route) && req.method !== 'GET' && !/^\/buildings\/\d+\/bank$/.test(route)) ||
-        (/^\/routers(\/|$)/.test(route) && ((req.method !== 'GET' && !/^\/routers\/\d+\/devices$/.test(route)) || /^\/routers\/\d+\/services$/.test(route))) ||
+        (/^\/buildings(\/|$)/.test(route) && req.method !== 'GET') ||
+        (/^\/routers(\/|$)/.test(route) && ((req.method !== 'GET' && !routerDevicesRoute.test(route)) || routerServicesRoute.test(route))) ||
         /^\/settings$/.test(route) ||
         /^\/network\/retry$/.test(route);
       if (superOnly && !isSuper) {

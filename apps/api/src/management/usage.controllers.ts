@@ -1,4 +1,4 @@
-import {Controller,Get,Param,ParseIntPipe,Query} from '@nestjs/common';
+import {Controller,Get,Param,ParseUUIDPipe,Query} from '@nestjs/common';
 import {Roles} from '../common/roles.decorator';
 import {UsageService} from './usage.service';
 
@@ -6,7 +6,7 @@ import {UsageService} from './usage.service';
 @Controller('customers')
 export class UsageController {
   constructor(private readonly usage:UsageService){}
-  @Get(':id/usage') history(@Param('id',ParseIntPipe) id:number,@Query('month') month?:string){return this.usage.history(id,month);}
+  @Get(':id/usage') history(@Param('id',ParseUUIDPipe) id:string,@Query('month') month?:string){return this.usage.history(id,month);}
 }
 
 @Controller('portal')

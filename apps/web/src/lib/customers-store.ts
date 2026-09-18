@@ -1,14 +1,15 @@
 import { closeCustomerAction } from './customer-actions-store';
 import type { Plan } from './plans-store';
 export interface Customer {
-  id: number; building_id: number; apartment: string; name: string; phone: string;
-  plan_id: number | null; plan_name: string | null; down: number | null; up: number | null;
+  id: string; building_id: string; apartment: string; name: string; phone: string;
+  plan_id: string | null; plan_name: string | null; down: number | null; up: number | null;
   ip: string | null; status: string; archived: number; manual_hold: number;
   network_state: string; network_checked_at: string | null; debt: number;
 }
 export interface CustomersContext {
-  customers: Customer[]; plans: Plan[]; buildingId: number; buildingName: string;
-  userId: number; canEdit: boolean; overview: boolean; search: string; archived: string;
+  customers: Customer[]; plans: Plan[]; buildingId: string; buildingName: string;
+  buildings: { id: string; name: string }[];
+  userId: string; canEdit: boolean; overview: boolean; search: string; archived: string;
   pagination: { page: number; total: number }; size: number;
   money: (value: number) => string; date: (value: string) => string;
   save: (route: string, body: Record<string, unknown>) => Promise<{ portal_link?: { token: string } }>;
