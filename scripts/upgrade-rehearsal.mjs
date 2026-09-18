@@ -5,7 +5,8 @@
 // La base heredada se genera ejecutando la revisión indicada, no una copia a mano,
 // así que refleja fielmente lo que hay en una VPS que aún no se actualizó.
 //
-// Uso: bun scripts/upgrade-rehearsal.mjs [revisión]   (por defecto: HEAD~ o HEAD)
+// Uso: bun scripts/upgrade-rehearsal.mjs [revisión]   (por defecto: la última
+// revisión anterior al registro de migraciones, que es la era de un solo archivo)
 // Requiere la conexión PostgreSQL del .env y pg_dump/pg_restore sólo para el respaldo.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,7 +15,15 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 
-const revision = process.argv[2] || 'HEAD';
+// La era heredada es la anterior al registro de migraciones: allí `database.service.ts`
+// contenía el esquema y se bastaba a sí mismo. Deducirla del historial evita que el
+// ensayo apunte a HEAD, que deja de servir en cuanto este trabajo está commiteado.
+const revisionHeredada = () => {
+  const adiciones = execFileSync('git', ['log', '--diff-filter=A', '--format=%H', '--', 'apps/api/src/database/migrations/index.ts'])
+    .toString().trim().split('\n').filter(Boolean);
+  return adiciones.length ? `${adiciones[adiciones.length - 1]}^` : 'HEAD';
+};
+const revision = process.argv[2] || revisionHeredada();
 const schema = `nuwenet_upgrade_${randomUUID().replaceAll('-', '')}`;
 const dist = path.resolve('apps/api/dist');
 const problemas = [];
