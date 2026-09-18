@@ -8,22 +8,16 @@
 // Uso: bun scripts/upgrade-rehearsal.mjs [revisión]   (por defecto: la última
 // revisión anterior al registro de migraciones, que es la era de un solo archivo)
 // Requiere la conexión PostgreSQL del .env y pg_dump/pg_restore sólo para el respaldo.
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { assertLegacySource, legacyRevision, legacySource } from './legacy-revision.mjs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 
-// La era heredada es la anterior al registro de migraciones: allí `database.service.ts`
-// contenía el esquema y se bastaba a sí mismo. Deducirla del historial evita que el
-// ensayo apunte a HEAD, que deja de servir en cuanto este trabajo está commiteado.
-const revisionHeredada = () => {
-  const adiciones = execFileSync('git', ['log', '--diff-filter=A', '--format=%H', '--', 'apps/api/src/database/migrations/index.ts'])
-    .toString().trim().split('\n').filter(Boolean);
-  return adiciones.length ? `${adiciones[adiciones.length - 1]}^` : 'HEAD';
-};
-const revision = process.argv[2] || revisionHeredada();
+// Qué revisión encarna la era heredada lo decide `scripts/legacy-revision.mjs`, que
+// también usa su prueba; así el ensayo no depende de que HEAD siga siendo el código viejo.
+const revision = process.argv[2] || legacyRevision();
 const schema = `nuwenet_upgrade_${randomUUID().replaceAll('-', '')}`;
 const dist = path.resolve('apps/api/dist');
 const problemas = [];
@@ -56,8 +50,8 @@ try {
 
   // 1. Base heredada: el código anterior crea su propio esquema entero.
   paso(`creando base heredada con ${revision}`);
-  const fuente = execFileSync('git', ['show', `${revision}:apps/api/src/database/database.service.ts`]).toString()
-    .replace("from './postgres-config'", `from '${pathToFileURL(path.join(dist, 'database/postgres-config.js')).href}'`);
+  const fuente = legacySource(revision, dist);
+  assertLegacySource(fuente, revision);
   const archivo = path.join(directorio, 'legacy-database.service.ts');
   writeFileSync(archivo, fuente);
   const { DatabaseService: ServicioHeredado } = await import(pathToFileURL(archivo).href);
