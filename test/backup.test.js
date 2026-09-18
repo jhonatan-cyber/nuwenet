@@ -11,6 +11,7 @@ import { ManagementService } from '../apps/api/dist/management/management.servic
 import { CredentialVault } from '../apps/api/dist/routers/credential-vault.js';
 import { BackupService, verifyBackup } from '../apps/api/dist/management/backup.service.js';
 import { runAsSystem } from '../apps/api/dist/common/request-context.js';
+import { uuidv7 } from '../apps/api/dist/common/uuid.js';
 
 async function fixture(run) {
   const directory = mkdtempSync(path.join(tmpdir(), 'nuwenet-backup-'));
@@ -19,14 +20,14 @@ async function fixture(run) {
   const previous = Object.fromEntries(names.map(key => [key, process.env[key]]));
   process.env.DB_DRIVER = 'postgres'; process.env.DATA_DIR = directory; process.env.BACKUP_DIR = path.join(directory, 'backups'); process.env.ROUTER_ENCRYPTION_KEY = pg.env.ROUTER_ENCRYPTION_KEY; delete process.env.BACKUP_ENCRYPTION_KEY; delete process.env.BACKUP_EXTERNAL_DIR; process.env.CURRENCY = 'Bs'; process.env.OVERDUE_CRON_MINUTES = '0';
   const db = new DatabaseService(); await db.onModuleInit();
-  const service = new ManagementService(db, {}, { notify: async () => {} });
+  const service = new ManagementService(db, {});
   try { await runAsSystem(() => run({ db, service, directory, pg })); }
   finally { await db.onModuleDestroy(); for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } const resolved = realpathSync(directory); assert.equal(path.dirname(resolved), realpathSync(tmpdir())); assert.ok(path.basename(resolved).startsWith('nuwenet-backup-')); await pg.close(); rmSync(resolved, { recursive: true, force: true }); }
 }
 
 async function seed(db, service) {
   const vault = new CredentialVault(), sealed = vault.seal({ username: 'fixture', password: 'private-fixture' });
-  await db.write(tx => tx`INSERT INTO routers(name,adapter,host,port,protocol,credentials) VALUES ('Fixture','mikrotik-rest','192.168.1.1',443,'https',${sealed})`);
+  await db.write(tx => tx`INSERT INTO routers(id,name,adapter,host,port,protocol,credentials) VALUES (${uuidv7()},'Fixture','mikrotik-rest','192.168.1.1',443,'https',${sealed})`);
   await service.createPlan({ name: 'Respaldo', down: 50, up: 10, price: 100 });
 }
 

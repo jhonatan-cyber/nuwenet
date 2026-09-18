@@ -1,12 +1,12 @@
 export type OperationsPage = 'buildings' | 'settings' | 'users' | 'backups' | 'audit';
 export interface OperationsContext {
   page: OperationsPage;
-  buildings: { id: number; name: string; address?: string; disabled?: number | boolean; central_router_id?: number | null }[];
-  routers: { id: number; name: string; adapter: string; disabled?: number | boolean; building_id?: number | null; status?: string }[];
+  buildings: { id: string; name: string; address?: string; disabled?: number | boolean; central_router_id?: string | null }[];
+  routers: { id: string; name: string; adapter: string; disabled?: number | boolean; building_id?: string | null; status?: string }[];
   settings: Record<string, any>;
   date: (value: string) => string;
   superadmin: boolean;
-  userId: number;
+  userId: string;
   request: (route: string, body?: Record<string, unknown>) => Promise<any>;
   refresh: () => Promise<void>;
 }

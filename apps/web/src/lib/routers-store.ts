@@ -3,7 +3,7 @@ export interface RouterClient {
   connection: string | null; status: string | null;
 }
 export interface RouterDeviceLink {
-  mac: string; customer_id: number; apartment: string; name: string; archived: number;
+  mac: string; customer_id: string; apartment: string; name: string; archived: number;
 }
 export interface RouterSnapshot {
   manufacturer: string; model?: string | null; firmware?: string | null;
@@ -13,22 +13,23 @@ export interface RouterSnapshot {
   wireless?: { band: string; ssid?: string | null; channel?: string | null; mode?: string | null; mac?: string | null; clients?: number | null }[] | null;
   clients?: RouterClient[] | null;
   wan_status?: string | null; uptime?: string | null;
-  interfaces?: { name: string; state: string; speed?: string }[] | null;
+  interfaces?: { name: string; state: string; speed?: string; disabled?: boolean }[] | null;
   blocked?: string[]; speedLimits?: { ip: string; maxLimit: string }[];
   firewallBlocks?: { ip: string; target: string }[];
   parental?: { ip: string; schedule: string }[];
   leases?: number; notes?: string[];
 }
 export interface RouterEntry {
-  id: number; name: string; adapter: string; host: string; port: number; protocol: string;
+  id: string; name: string; adapter: string; host: string; port: number; protocol: string;
   diagnostic_host?: string | null; status: string; disabled?: number | boolean;
   last_checked?: string | null; last_error?: string | null;
   snapshot?: RouterSnapshot | null; capabilities?: Record<string, boolean>;
-  checking?: boolean; building_id?: number | null; devices?: RouterDeviceLink[];
+  compatibility?: 'full' | 'partial' | 'read_only' | 'unavailable';
+  checking?: boolean; building_id?: string | null; devices?: RouterDeviceLink[];
 }
 export interface RouterAdapterInfo { id: string; name: string; requirements: string }
 export interface RoutersContext {
-  canManage: boolean; userId: number;
+  canManage: boolean; userId: string;
   request: (route: string, body?: Record<string, unknown>) => Promise<any>;
   refresh: () => Promise<void>;
 }

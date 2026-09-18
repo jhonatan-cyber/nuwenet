@@ -1,8 +1,8 @@
-export interface Plan { id: number; name: string; down: number; up: number; price: number; customer_count: number; building_id: number }
-export interface PlanInput { name: string; down: number; up: number; price: number; building_id?: number; id?: number }
+export interface Plan { id: string; name: string; down: number; up: number; price: number; customer_count: number; building_id: string }
+export interface PlanInput { name: string; down: number; up: number; price: number; building_id?: string; id?: string }
 export interface PlansContext {
-  plans: Plan[]; buildings: { id: number; name: string }[];
-  buildingId: number | null; currency: string; canEdit: boolean; superadmin: boolean; userId: number;
+  plans: Plan[]; buildings: { id: string; name: string }[];
+  buildingId: string | null; currency: string; canEdit: boolean; superadmin: boolean; userId: string;
   save: (route: 'plans' | 'plans/update', body: PlanInput) => Promise<unknown>;
   refresh: () => Promise<void>;
 }

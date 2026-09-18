@@ -75,7 +75,7 @@ Archivos (revisión 2026-09-13): `apps/web/src/components/RoutersPanel.tsx`, `Cu
 - [x] 4.1 Mostrar estado real en tarjeta MikroTik: bloqueados, colas, leases.
 - [x] 4.2 `Cortar/Reactivar internet` por departamento (diálogo `CustomerActions` con confirmación) + botones por dispositivo en la tarjeta del router, conectados a acción MikroTik.
 - [x] 4.3 Mostrar plan aplicado (`down/up` de `queue/simple`) en vista Departamentos.
-- [x] 4.4 Avisos en línea y errores claros cuando falla el router (offline, auth, timeout). Revisión 2026-09-13: los paneles React usan avisos `role=status`; el toast legacy queda para reportes/banco y vistas no migradas (portal, recibos).
+- [x] 4.4 Avisos en línea y errores claros cuando falla el router (offline, auth, timeout). Revisión 2026-09-13: los paneles React usan avisos `role=status`; el toast legacy queda para vistas no migradas (portal, recibos).
 - [x] 4.5 Documentar flujo operador: generar mensualidad → pagar → auto-reactivar, revisar vencidos → suspender.
 
 ## Fase 5 – Pruebas, seguridad y puesta en producción
@@ -96,12 +96,11 @@ Archivos (revisión 2026-09-13): `apps/web/src/components/RoutersPanel.tsx`, `Cu
 - [x] 6.2 Revisión automática de vencidos (`OVERDUE_CRON_MINUTES`, desactivada por defecto).
 - [x] 6.3 Abonos parciales (`POST /pay` con `amount` opcional, saldos y reactivación solo al completar).
 - [x] 6.4 Moneda de presentación (`CURRENCY`) y modo `mixed` en el estado.
-- [x] 6.5 Avisos a clientes (canal `log`, extensible) en suspensión, reactivación y fallos.
 - [x] 6.6 `firewall` por destino y `parental_control` por horario en MikroTik, con lectura en la tarjeta.
 - [x] 6.7 Paginación de mensualidades en el panel (25 por página).
 - [x] 6.8 Panel para no técnicos: guía de primeros pasos con progreso, estados en lenguaje claro (Al día / En mora / Cortado con deuda) y confirmaciones antes de cortar.
 - [ ] Backends de escritura OpenWrt/ARRIS: no implementados sin equipo físico que valide (escribir a ciegas en red es riesgoso).
-- [ ] Cobros bancarios y facturación fiscal: requieren proveedor y normativa local.
+- [ ] Facturación fiscal: fuera del alcance actual.
 - [ ] RADIUS / TR-069 / SNMP: roadmap según el parque instalado.
 
 ## Decisión de arquitectura (rellenar en Fase 0)
@@ -123,4 +122,4 @@ Archivos (revisión 2026-09-13): `apps/web/src/components/RoutersPanel.tsx`, `Cu
 | 2026-09-08 | Fase 4 lectura+docs (4.1, 4.5, 5.2, 5.4, 5.5) | opencode | inspect trae bloqueadas/colas/leases a la tarjeta; runbook+rollback en router-api.md; alcance mixto en README. Queda fisico: 0-2, 5.1, 5.3, 5.6. |
 | 2026-09-08 | Fase 6 cierre funcional | opencode | Auth+setup, cron vencidos, abonos parciales, CURRENCY, avisos log, firewall/parental MikroTik, paginacion. check+build+7 tests+smoke UI en verde. |
 | 2026-09-13 | Revisión doc vs código | opencode | Sin cambios de código. Se corrigen 1.3 (`rest-api` no `test`), 2.7/3.2-3.4 (filter `nuwenet-suspend-*`, cola compartida `nuwenet-department-*`), 3.6-3.8 (sin líneas fijas; DTO sin `customer_id/mac`; `queue+processQueue`), Fase 4 (+`operations.js`), 5.3 dividida en 5.3a código `[x]` / 5.3b prod física `[ ]`, Registro movido al final. Pendiente físico: 0, 1, 2, 5.1, 5.3b + re-ejecutar `check/test/test:ui`. |
-| 2026-09-13 | Revisión vespertina + panel shadcn y Fases C/D | opencode | Fase 4 actualizada (`routers.js`/`operations.js` eliminados → `RoutersPanel`/`OperationsPanel`/`BillingPanel`/`CustomerActions`; 4.2 diálogo Cortar/Reactivar; 4.4 avisos en línea); 1.8 suma `BACKUP_ENCRYPTION_KEY`; 5.3b nota Fase D en código; 5.6 verde de hoy. Fases C (avisos desacoplados, diagnóstico por tarea, `test/tasks.test.js`) y D (respaldo cifrado, `test/backup.test.js`) hechas en el otro plan. Pendiente físico: 0, 1, 2, 5.1, 5.3b. |
+| 2026-09-13 | Revisión vespertina + panel shadcn y Fases C/D | opencode | Fase 4 actualizada (`routers.js`/`operations.js` eliminados → `RoutersPanel`/`OperationsPanel`/`BillingPanel`/`CustomerActions`; 4.2 diálogo Cortar/Reactivar; 4.4 avisos en línea); 1.8 suma `BACKUP_ENCRYPTION_KEY`; 5.3b nota Fase D en código; 5.6 verde de hoy. Fases C (diagnóstico por tarea, `test/tasks.test.js`) y D (respaldo cifrado, `test/backup.test.js`) hechas en el otro plan. Pendiente físico: 0, 1, 2, 5.1, 5.3b. |

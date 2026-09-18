@@ -1,6 +1,8 @@
 ---
+import ThemeInit from '../components/ThemeInit.astro';
 import Sidebar from '../components/Sidebar.astro';
-import '../styles/panel.css';
+import '../styles/ui.css';
+import '../styles/application.css';
 ---
 <!doctype html>
 <html lang="es">
@@ -12,14 +14,7 @@ import '../styles/panel.css';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" />
     <title>NuweNet · Gestión de internet</title>
-    <script is:inline>
-      try {
-        var t = JSON.parse(localStorage.getItem('nuwenet.panel.preferences') || '{}').theme;
-        if (t !== 'light' && t !== 'dark' && t !== 'system') t = 'system';
-        var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-      } catch (e) { document.documentElement.dataset.theme = 'light'; }
-    </script>
+    <ThemeInit />
   </head>
   <body class="setup-screen">
     <Sidebar />

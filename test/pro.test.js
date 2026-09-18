@@ -6,26 +6,26 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseService} from '../apps/api/dist/database/database.service.js';
 import {ManagementService} from '../apps/api/dist/management/management.service.js';
-import {NotifierService} from '../apps/api/dist/management/notifier.service.js';
 import {MikroTikAdapter} from '../apps/api/dist/routers/adapters/mikrotik.adapter.js';
 import {requestContext} from '../apps/api/dist/common/request-context.js';
 import {runAsSystem} from '../apps/api/dist/common/request-context.js';
 
-test('Pro: tokens, aislamiento, transferencias atómicas, recibos firmados y WhatsApp sin bloqueo',async()=>{
+test('Pro: tokens, aislamiento, pagos manuales, recibos firmados',async()=>{
   const dir=mkdtempSync(path.join(tmpdir(),'nuwenet-pro-'));
   const pg = await createTestSchema();
-  const keys=['DB_DRIVER','DATA_DIR','NOTIFY_CHANNEL'],before=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
-  Object.assign(process.env,{DB_DRIVER:'postgres',DATA_DIR:dir,NOTIFY_CHANNEL:'log'});
+  const keys=['DB_DRIVER','DATA_DIR'],before=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  Object.assign(process.env,{DB_DRIVER:'postgres',DATA_DIR:dir});
   let db;
   try {
     db=new DatabaseService();await db.onModuleInit();
-    const service=new ManagementService(db,{},new NotifierService(db));
+    const service=new ManagementService(db,{});
     // B5/B7: la configuración inicial corre como sistema explícito; el enlace
     // completo solo se entrega una vez al emitirlo (ya no está en el estado).
     const created1=await runAsSystem(()=>service.createPlan({name:'Plan Pro',down:50,up:10,price:100}));
     void created1;
-    const link1=(await runAsSystem(()=>service.createCustomer({apartment:'101',name:'Ana',phone:'+59170000000',plan_id:1}))).portal_link;
-    const link2=(await runAsSystem(()=>service.createCustomer({apartment:'102',name:'Luis',plan_id:1}))).portal_link;
+    const planId=(await db.read(tx=>tx`SELECT id FROM plans LIMIT 1`))[0].id;
+    const link1=(await runAsSystem(()=>service.createCustomer({apartment:'101',name:'Ana',phone:'+59170000000',plan_id:planId}))).portal_link;
+    const link2=(await runAsSystem(()=>service.createCustomer({apartment:'102',name:'Luis',plan_id:planId}))).portal_link;
     assert.match(link1.token,/^[\w-]{43}$/);assert.notEqual(link1.token,link2.token);
     const customers=await db.read(tx=>tx`SELECT * FROM customers ORDER BY id`);
     // En reposo solo el hash; el estado no expone el enlace.
@@ -34,34 +34,24 @@ test('Pro: tokens, aislamiento, transferencias atómicas, recibos firmados y Wha
     await runAsSystem(()=>service.generateBilling({period:'2026-01',due:'2026-01-10'}));
     const token=link1.token;
     await assert.rejects(()=>service.portalData('bad'),/Token/);
-    const report=await service.portalReportPayment({token,amount:60,reference:' ref-1 ',notes:'<img src=x onerror=alert(1)>'});
-    await assert.rejects(()=>service.portalReportPayment({token,amount:60,reference:'ref-1'}),/reporte/);
+    const invoice=(await service.portalData(token)).invoices[0];
+    await runAsSystem(()=>service.pay({id:invoice.id,amount:60,method:'cash'}));
     const other=await service.portalData(link2.token);
-    assert.equal(other.paymentReports.length,0);assert.equal(other.invoices.length,1);
-    const results=await Promise.allSettled([runAsSystem(()=>service.reviewPaymentReport({id:report.id,status:'approved'})),runAsSystem(()=>service.reviewPaymentReport({id:report.id,status:'approved'}))]);
-    assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+    assert.equal(other.payments.length,0);assert.equal(other.invoices.length,1);
     const portal=await service.portalData(token);
     assert.equal(portal.payments.length,1);assert.equal(portal.invoices[0].paid_total,6000);
     assert.match(portal.payments[0].signature,/^[a-f0-9]{64}$/);
     assert.equal(portal.payments[0].signature,(await runAsSystem(()=>service.receipt(portal.payments[0].id))).payment.signature);
-    assert.equal((await runAsSystem(()=>service.sendInvoiceWhatsapp({id:portal.invoices[0].id}))).status,'internal');
-    await runAsSystem(()=>service.sendPaymentWhatsapp({id:portal.payments[0].id}));
-    assert.equal((await db.read(tx=>tx`SELECT * FROM notifications`)).length,2);
-    const excessive=await service.portalReportPayment({token,amount:100,reference:'too-much'});
-    await assert.rejects(()=>runAsSystem(()=>service.reviewPaymentReport({id:excessive.id,status:'approved'})),/supera/);
-    assert.equal((await service.portalData(token)).payments.length,1);
-    const noAccess={id:999,role:'admin',username:'outsider'};
-    assert.deepEqual(await requestContext.run(noAccess,()=>service.listPaymentReports()),[]);
-    await assert.rejects(()=>requestContext.run(noAccess,()=>service.listPaymentReports(customers[0].building_id)),/acceso/);
-    await assert.rejects(()=>requestContext.run(noAccess,()=>service.sendInvoiceWhatsapp({id:portal.invoices[0].id})),/acceso/);
-    await assert.rejects(()=>requestContext.run(noAccess,()=>service.reviewPaymentReport({id:excessive.id,status:'rejected'})),/acceso/);
+    const noAccess={id:'01924f1e-2222-7000-8000-abcdefabcdef',role:'admin',username:'outsider'};
+    await assert.rejects(()=>requestContext.run(noAccess,()=>service.receipt(portal.payments[0].id)),/acceso/);
+    assert.equal('bank' in portal,false);assert.equal('paymentReports' in portal,false);
     await db.onModuleDestroy();db=new DatabaseService();await db.onModuleInit();
     // B5: el hash persiste el reinicio y el enlace sigue válido sin exponerlo.
-    const persisted=await db.read(tx=>tx`SELECT access_token_hash,access_token FROM customers WHERE id=1`);
+    const persisted=await db.read(tx=>tx`SELECT access_token_hash,access_token FROM customers WHERE id=${customers[0].id}`);
     assert.ok(persisted[0].access_token_hash);assert.equal(persisted[0].access_token,null);
-    assert.equal((await new ManagementService(db,{},{}).portalData(token)).payments.length,1);
-    await db.write(tx=>tx`UPDATE customers SET archived=1 WHERE id=1`);
-    await assert.rejects(()=>new ManagementService(db,{},{}).portalData(token),/Token/);
+    assert.equal((await new ManagementService(db,{}).portalData(token)).payments.length,1);
+    await db.write(tx=>tx`UPDATE customers SET archived=1 WHERE id=${customers[0].id}`);
+    await assert.rejects(()=>new ManagementService(db,{}).portalData(token),/Token/);
   } finally {
     if(db)await db.onModuleDestroy();
     for(const [k,v]of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}

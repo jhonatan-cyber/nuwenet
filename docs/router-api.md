@@ -7,12 +7,13 @@ El módulo NestJS `RoutersModule` separa la API del protocolo de cada equipo. Lo
 | Adaptador | Protocolo | Funciones implementadas | Validación |
 | --- | --- | --- | --- |
 | `arris-touchstone` | Sesión web con Playwright | Modelo, firmware, hardware, serie, WAN/LAN, Wi-Fi 2,4/5 GHz y clientes con IPv4/IPv6 desde la IP de administración. Diagnóstico DOCSIS adicional opcional | Equipo TG2492LG-NA, firmware 9.1.103HB; consulta real de 5 clientes únicos |
-| `mikrotik-rest` | RouterOS REST con autenticación Basic | Identificación, versión, tiempo activo e interfaces | Pruebas con respuestas simuladas; falta equipo físico |
+| `mikrotik-rest` | RouterOS REST con autenticación Basic | Identificación, versión, tiempo activo, interfaces, puertos ethernet (habilitar/deshabilitar con verificación) | Probado con respuestas simuladas; falta equipo físico. Los switches CRS con RouterOS usan este mismo adaptador; los CSS con SwOS y otros switches sin API quedan como inventario |
 | `openwrt-ubus` | ubus JSON-RPC | Login, identificación, versión, tiempo activo e interfaces | Pruebas con respuestas simuladas; falta equipo físico |
+| `tr369-usp` | USP / TR-369 (base, sin modelo validado) | Ninguna: punto de extensión por modelo. No participa en la detección automática | Requiere agente USP habilitado en el equipo; validar por modelo/firmware antes de anunciar soporte |
 
 La compatibilidad depende del modelo, firmware, servicios habilitados y permisos. No hay una API universal que convierta cualquier router en un equipo administrable. Un adaptador web ARRIS puede necesitar ajustes cuando cambia su firmware. Un firewall disponible en el panel del equipo no implica que este adaptador implemente su modificación.
 
-OpenWrt es de consulta. ARRIS TG2492LG-NA con firmware 9.1.103HB integra filtros IPv4 TCP/UDP por IP, puertos y horarios. MikroTik REST implementa suspensión, reactivación, velocidad, bloqueo por destino y control parental. Solo MikroTik está habilitado como equipo central para las órdenes de departamentos: ARRIS no proporciona un corte completo de IPv6 ni límites de velocidad por cliente. Consulta [la guía de operación](operacion.md) para estados, reintentos, cambios de IP y limpieza de reglas.
+OpenWrt es de consulta. ARRIS TG2492LG-NA con firmware 9.1.103HB integra filtros IPv4 TCP/UDP por IP, puertos y horarios. MikroTik REST implementa suspensión, reactivación, velocidad, bloqueo por destino y control parental. Solo MikroTik está habilitado como equipo central para las órdenes de departamentos: ARRIS no proporciona un corte completo de IPv6 ni límites de velocidad por cliente. Los estados, reintentos, cambios de IP y limpieza de reglas se describen en la sección Operación diaria de este documento.
 
 ### Controles ARRIS
 
@@ -33,7 +34,7 @@ Se conservan las reglas externas y las de otras funciones. Un error de escritura
 
 `POST /api/routers/connect` recibe únicamente `host` (IPv4 privada), `username` y `password`. Consulta HTTPS en 443 y luego HTTP en 80, detecta los adaptadores compatibles y guarda el equipo con su primera consulta solo si la autenticación e identificación tienen éxito. El nombre se obtiene del fabricante y modelo disponibles. No sigue redirecciones ni consulta otras IP.
 
-La interfaz ofrece este flujo por defecto con una sola IP. Configuración avanzada conserva la selección manual de adaptador, puerto y protocolo. La detección no habilita servicios ni amplía los permisos del usuario del router; solo consulta los datos implementados por cada adaptador. ARRIS requiere que su página de acceso identifique ARRIS/Touchstone y el campo `UserName`. El modelo se obtiene de la sesión del panel. Otros puertos, interfaces y equipos no compatibles requieren configuración manual o un adaptador adicional.
+La interfaz ofrece este flujo por defecto con una sola IP. El botón **Descubrir en la red** escucha la red del servidor y precarga IP y nombre del equipo elegido. Funciona en el mismo dominio broadcast (en VirtualBox usa modo puente, no NAT ni solo-anfitrión) y en Windows puede exigir permitir UDP 5678 entrante para Bun. Configuración avanzada conserva la selección manual de adaptador, puerto y protocolo. La detección no habilita servicios ni amplía los permisos del usuario del router; solo consulta los datos implementados por cada adaptador. ARRIS requiere que su página de acceso identifique ARRIS/Touchstone y el campo `UserName`. El modelo se obtiene de la sesión del panel. Otros puertos, interfaces y equipos no compatibles requieren configuración manual o un adaptador adicional.
 
 En ARRIS, la tabla de clientes adjuntos se agrupa por MAC y conserva todas las direcciones IPv4/IPv6; las reservas DHCP no se incluyen como dispositivos conectados. Los contadores de clientes por banda y LAN se muestran tal como los informa el equipo. La presencia en la tabla no garantiza conectividad en tiempo real. Si falla esta lectura opcional, se mantienen los datos del estado general y se añade una nota. Las consultas no leen ni guardan claves Wi-Fi. El diagnóstico DOCSIS y los estados físicos de los puertos siguen dependiendo de la interfaz de diagnóstico, disponible mediante `diagnostic_host` en la API para configuraciones existentes; no se pide una segunda IP en el modal.
 
@@ -46,10 +47,12 @@ Base: `/api/routers`. En desarrollo se puede utilizar a través de Astro en el p
 | GET | `/api/routers/adapters` | Adaptadores, requisitos y capacidades implementadas |
 | GET | `/api/routers` | Conexiones, última consulta y capacidades; nunca credenciales |
 | POST | `/api/routers` | Guardar una conexión; todavía no contacta al equipo |
+| POST | `/api/routers/discover` | Escuchar anuncios MNDP (UDP 5678) unos segundos (`{seconds: 2-60}`) y barrer puertos 8291/80/443 de las subredes privadas del servidor; devuelve vecinos verificados más candidatos sin confirmar; solo lectura, sin credenciales |
 | GET | `/api/routers/:id` | Conexión y últimas 20 consultas |
 | POST | `/api/routers/:id/update` | Actualizar conexión e invalidar el estado anterior |
 | POST | `/api/routers/:id/check` | Autenticar y consultar el equipo; guarda resultado e historial |
 | POST | `/api/routers/:id/remove` | Quitar conexión e historial del sistema; no modifica el router |
+| POST | `/api/routers/:id/ethernet` | `{"name":"ether2","disabled":true}` para habilitar/deshabilitar un puerto físico con verificación; solo adaptadores con `switch_ports` |
 | POST | `/api/routers/:id/actions` | Central: `{"action":"suspend"|"reactivate","ip":"192.168.x.x"}`, `{"action":"speed_limit","ip":"...","down":50,"up":20}`, `{"action":"firewall","ip":"...","target":"tiktok.com"}` (o `"remove":true` para permitir) o `{"action":"parental_control","ip":"...","schedule":"22h-7h,mon"}` (`"off"` quita el horario); ARRIS/OpenWrt rechazan con HTTP 422; sin `ip` devuelve 400 |
 | POST | `/api/customers/ip` | Asignar o quitar (`{}` sin `ip`) la IP privada del departamento; valida RFC1918 y duplicados |
 
@@ -80,14 +83,16 @@ La consulta ARRIS puede tardar hasta dos minutos. Ajusta el timeout del proxy si
 
 ## Autenticación del panel
 
-Las operaciones de negocio exigen sesión incluso antes de crear el primer usuario, que es el super-admin único y global. Solo status/setup/login/logout/me son públicos. Setup es atómico y requiere código para acceso remoto; las cookies son HttpOnly y SameSite=Lax, con Secure al usar HTTPS o COOKIE_SECURE=true. Los roles son superadmin (dueño del sistema: usuarios, edificios y red) y admin (solo sus edificios; la red la configura el super-admin). Las contraseñas se procesan con Bun.password y los tokens se guardan como hashes SHA-256. Consulta [permisos y acceso remoto](operacion.md#usuarios-y-acceso-remoto).
+Las operaciones de negocio exigen sesión incluso antes de crear el primer usuario, que es el super-admin único y global. Solo status/setup/login/logout/me son públicos. Setup es atómico y requiere código para acceso remoto; las cookies son HttpOnly y SameSite=Lax, con Secure al usar HTTPS o COOKIE_SECURE=true. Los roles son superadmin (dueño del sistema: usuarios, edificios y red) y admin (solo sus edificios; la red la configura el super-admin). Las contraseñas se procesan con Bun.password y los tokens se guardan como hashes SHA-256. Los permisos y el acceso remoto se describen en la sección Autenticación del panel de este documento.
 
 ## Operación diaria (runbook)
 
 1. **Alta:** crea el plan, registra el depto con su IP privada (lease estático del MikroTik). Al guardar con IP se aplica la velocidad del plan.
 2. **Cobro:** genera mensualidades, registra el pago completo. Si no quedan cuotas vencidas, el depto se reactiva solo en el MikroTik.
 3. **Mora:** pulsa Revisar vencimientos. Los deptos con cuota vencida se suspenden en el MikroTik; sin IP quedan simulados.
-4. **Verificación:** en Routers, Probar conexión muestra bloqueadas (`nuwenet-suspend-*`), colas (`nuwenet-*`) y leases. La tarjeta manual permite suspender/reactivar una IP suelta.
+4. **Puesta en marcha sin consola:** con el equipo accesible por IP y credenciales iniciales, usa **Puesta en marcha inicial** en Equipos de red (o `POST /api/routers/onboard`). Fija identidad, IP de gestión /24 (se suma sin quitar la anterior), DNS, usuario de servicio y HTTPS opcional, y verifica en la nueva IP antes de informar éxito; si algo falla a mitad, dice qué ya quedó aplicado. Después **Aprovisionar puertos y permisos** ajusta servicios. Todo probado con respuestas simuladas; el certificado autofirmado sirve en LAN de gestión y, como NuweNet valida TLS, producción requiere un certificado válido. Irremplazable por software: cablear, encender y que el servidor alcance al equipo.
+5. **Red WAN/LAN visual:** la pestaña Red WAN/LAN de Aprovisionar aplica directo por REST (`POST /api/routers/:id/wan` y `POST /api/routers/:id/lan-dhcp`) el bloque WAN (DHCP + NAT) y LAN/DHCP (`lan` en /24, `lanInterface`, `pool`, `dns` y `leases` de switch y departamentos), con verificación de lectura. Valida subred, colisiones con el pool y duplicados antes de aplicarlo; no elimina leases existentes. Los comandos equivalentes quedan como referencia. El direccionamiento recomendado es: WAN del MikroTik por DHCP del proveedor, LAN estática en el central, leases estáticos por MAC para switch y routers de departamento, y DHCP propio en cada router de departamento para sus equipos.
+6. **Verificación:** en Routers, Probar conexión muestra bloqueadas (`nuwenet-suspend-*`), colas (`nuwenet-*`) y leases. La tarjeta manual permite suspender/reactivar una IP suelta.
 5. **Fallo de red:** la orden queda `mikrotik-failed` en Control de acceso con evento explicativo; la base sigue siendo la verdad. Reintenta la acción manual o revisa credenciales/conectividad.
 6. **Rollback a simulado:** quita la IP del depto (`POST /api/customers/ip` sin `ip`) o quita el router de NuweNet (no toca el router). Limpia a mano en WinBox las reglas `nuwenet-suspend-*` y colas `nuwenet-*` si ya no las quieres.
 
@@ -121,15 +126,15 @@ El central se asigna con `POST /api/buildings/central`, usando `building_id` y `
 
 `POST /api/routers/:id/devices` recibe `{ "mac": "AA:BB:CC:DD:EE:FF", "customer_id": 123 }`. La MAC debe figurar en la última consulta y el departamento debe estar vigente y pertenecer al mismo edificio. `customer_id: null` retira la asociación. Los administradores pueden gestionar estos vínculos dentro de sus edificios; configurar el hardware sigue reservado al superadministrador.
 
-El detalle del router devuelve `devices` y los departamentos disponibles. Las asociaciones persisten cuando cambia la IP o el dispositivo deja de aparecer en una consulta. El control automático incluye la IP de servicio y las IPv4 activas de las MAC vinculadas. En MikroTik se aplica una cola compartida por departamento y se limpian las direcciones anteriores; consulta configuracion-operativa.md para requisitos y validación física.
+El detalle del router devuelve `devices` y los departamentos disponibles. Las asociaciones persisten cuando cambia la IP o el dispositivo deja de aparecer en una consulta. El control automático incluye la IP de servicio y las IPv4 activas de las MAC vinculadas. En MikroTik se aplica una cola compartida por departamento y se limpian las direcciones anteriores; consulta el [plan de control](plan-control-routers.md) para requisitos y validación física.
 
 La migración 14 elimina el campo global heredado sin asignarlo automáticamente a otro edificio ni modificar el equipo físico. Los edificios que carezcan de central deben configurarlo expresamente.
 
 ## Añadir otro fabricante
 
-1. Implementa `RouterAdapter` en `apps/api/src/routers/adapters`.
+1. Implementa `RouterAdapter` en `apps/api/src/routers/adapters` (ver `tr369.adapter.ts` como base para nuevos protocolos).
 2. Declara únicamente las capacidades implementadas y los requisitos del protocolo.
-3. Regístralo en `AdapterRegistry`, en `RoutersModule` y en el tipo/DTO de identificadores admitidos. Si implementa escritura por IP (`suspend`/`reactivate`/`setSpeedLimit`), añade su id a `enforcingAdapters` en `router.types.ts` para que el control automático lo use.
+3. Regístralo en `AdapterRegistry`, en `RoutersModule` y en el tipo/DTO de identificadores admitidos (`AdapterId`, `TestRouterDto`, `SaveRouterDto`). Si implementa escritura por IP (`suspend`/`reactivate`/`setSpeedLimit`), añade su id a `enforcingAdapters` en `router.types.ts` para que el control automático lo use.
 4. Normaliza las respuestas en `RouterSnapshot`; no devuelvas respuestas brutas ni secretos.
 5. Añade pruebas del protocolo y valida con un equipo físico compatible antes de anunciar soporte verificado.
 

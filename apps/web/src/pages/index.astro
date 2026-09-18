@@ -1,43 +1,30 @@
 ---
+import DeferredPanels from '../components/DeferredPanels';
 import DashboardLayout from '../layouts/DashboardLayout.astro';
-import PaymentDialog from '../components/PaymentDialog.astro';
 import AccountMenu from '../components/AccountMenu.astro';
 import AccountDialog from '../components/AccountDialog.astro';
-import PlansPanel from '../components/PlansPanel';
-import CustomersPanel from '../components/CustomersPanel';
-import BillingPanel from '../components/BillingPanel';
-import OperationsPanel from '../components/OperationsPanel';
-import RoutersPanel from '../components/RoutersPanel';
-import CustomerActions from '../components/CustomerActions';
+import ThemeToggle from '../components/ThemeToggle';
 ---
 <DashboardLayout>
   <main>
-    <header class="floating-navbar">
-      <div class="navbar-leading">
-        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Abrir navegación" aria-expanded="false" aria-controls="main-sidebar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-        <span class="breadcrumb"><span class="building-name">Mi edificio <span class="slash">/</span></span><span id="breadcrumb">Resumen</span></span>
+    <header class="floating-navbar flex items-center justify-between gap-4 px-5 max-[700px]:gap-2 max-[700px]:px-3">
+      <div class="flex min-w-0 items-center gap-3">
+        <button id="sidebar-toggle" class="hidden size-9 items-center justify-center rounded-md border bg-background hover:bg-muted max-[700px]:inline-flex" type="button" aria-label="Abrir navegación" aria-expanded="false" aria-controls="main-sidebar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <span class="truncate text-sm"><span class="building-name text-muted-foreground">Mi edificio / </span><span id="breadcrumb">Resumen</span></span>
       </div>
-      <div class="navbar-actions">
-        <select id="building-select" class="building-select" aria-label="Edificio activo" hidden></select>
-        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Cambiar tema"><span class="theme-icon" aria-hidden="true">☀</span></button>
+      <div class="flex items-center gap-3 max-[700px]:gap-1.5">
+        <select id="building-select" class="h-9 max-w-[180px] rounded-md border border-input bg-transparent px-3 text-sm shadow-xs max-[700px]:max-w-[120px]" aria-label="Edificio activo" hidden></select>
+        <ThemeToggle client:load />
         <AccountMenu />
       </div>
     </header>
     <section class="content">
-      <div class="notice" id="network-notice" hidden>
-        Consulta el estado de cada orden en Control de acceso.
-      </div>
       <div id="view"></div>
-      <PlansPanel client:load />
-      <CustomersPanel client:load />
-      <BillingPanel client:load />
-      <OperationsPanel client:load />
-      <RoutersPanel client:load />
+      <DeferredPanels client:load />
     </section>
   </main>
-  <PaymentDialog />
   <AccountDialog />
-  <CustomerActions client:load />
+  <div id="toast" role="status" aria-live="polite" style="display:none" class="fixed right-6 bottom-6 z-[100] max-w-[calc(100vw-48px)] rounded-lg border bg-card px-5 py-4 text-sm shadow-lg"></div>
 </DashboardLayout>
 <script>
   import '../scripts/dashboard.js';

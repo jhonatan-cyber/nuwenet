@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseIntPipe, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto, CreateUserDto, LoginDto, SetupDto, UpdateUserDto } from './auth.dto';
@@ -15,7 +15,13 @@ export class AuthController {
   async status(@Req() req: Request) {
     const cookies = this.auth.parseCookies(req.headers.cookie);
     const user = await this.auth.validate(cookies['nuwenet_session']);
-    return { users: await this.auth.userCount(), authenticated: Boolean(user), user };
+    const users = await this.auth.userCount();
+    const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip || '');
+    return {
+      users, authenticated: Boolean(user), user,
+      setup_code_required: users === 0 && (!local || Boolean(process.env.SETUP_TOKEN)),
+      setup_available: local || Boolean(process.env.SETUP_TOKEN),
+    };
   }
 
   @Post('setup') @HttpCode(200)
@@ -32,7 +38,11 @@ export class AuthController {
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip || '');
     if ((!local || process.env.SETUP_TOKEN) && (!process.env.SETUP_TOKEN || req.headers['x-setup-token'] !== process.env.SETUP_TOKEN)) {
       await logSecurity(this.database, { actor: dto.username?.trim() || '?', ip, event: 'auth.setup_denied', detail: 'token' });
-      throw new ForbiddenException('Configura SETUP_TOKEN y utiliza ese código para crear el administrador.');
+      throw new ForbiddenException(!process.env.SETUP_TOKEN
+        ? 'La creación de cuentas aún no está habilitada para este acceso. Contacta a quien instaló el sistema.'
+        : req.headers['x-setup-token']
+          ? 'El código de instalación es incorrecto. Revísalo y vuelve a intentarlo.'
+          : 'Introduce el código de instalación para crear esta cuenta.');
     }
     const created = await this.auth.setup(dto);
     await logSecurity(this.database, { actor: created.username, ip, event: 'auth.setup', detail: 'superadmin creado' });
@@ -84,9 +94,9 @@ export class AuthController {
   @Roles('superadmin') @Get('users') users() { return this.auth.users(); }
   @Roles('superadmin') @Post('users') @HttpCode(200) createUser(@Body() dto: CreateUserDto) { return this.auth.createUser(dto); }
   @Roles('superadmin') @Post('users/:id/update') @HttpCode(200)
-  updateUser(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) { return this.auth.updateUser(id, dto); }
+  updateUser(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string, @Body() dto: UpdateUserDto) { return this.auth.updateUser(id, dto); }
   @Roles('superadmin') @Post('users/:id/remove') @HttpCode(200)
-  removeUser(@Param('id', ParseIntPipe) id: number, @Req() req: Request) { return this.auth.deleteUser(id, (req as Request & { user?: { id: number } }).user?.id); }
+  removeUser(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string, @Req() req: Request) { return this.auth.deleteUser(id, (req as Request & { user?: { id: string } }).user?.id); }
   @Roles('admin', 'superadmin') @Post('password') @HttpCode(200)
   password(@Body() dto: ChangePasswordDto) { return this.auth.changePassword(requestContext.getStore()!.id, dto); }
 }

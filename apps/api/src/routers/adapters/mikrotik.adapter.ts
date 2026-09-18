@@ -9,7 +9,7 @@ export class MikroTikAdapter implements RouterAdapter {
     id: 'mikrotik-rest' as const,
     name: 'MikroTik · RouterOS REST',
     requirements: 'RouterOS con REST habilitado (www-ssl) y cuenta con permisos read, write, api, firewall, queue y dhcp. Consultas /rest/system/resource y /rest/interface; escritura en /rest/ip/firewall/filter y /rest/queue/simple. Único admitido como equipo central por edificio. Probado con respuestas simuladas; pendiente validación en equipo físico.',
-    capabilities: { ...readCapabilities, suspend: true, reactivate: true, speed_limit: true, firewall: true, parental_control: true },
+    capabilities: { ...readCapabilities, suspend: true, reactivate: true, speed_limit: true, firewall: true, parental_control: true, switch_ports: true },
   };
 
   private headers(credentials: RouterCredentials) {
@@ -37,8 +37,9 @@ export class MikroTikAdapter implements RouterAdapter {
     const origin = routerOrigin(target);
     const headers = this.headers(credentials);
     const resource = await routerJson(`${origin}/rest/system/resource`, { headers });
-    if (!Array.isArray(resource) || !resource[0]?.version) throw new BadGatewayException('La respuesta no corresponde a RouterOS REST.');
-    const r = resource[0];
+    // /system/resource es singleton: RouterOS real lo devuelve como objeto, no como arreglo.
+    const r = Array.isArray(resource) ? resource[0] : resource as Record<string, unknown>;
+    if (!r || typeof r !== 'object' || !r.version) throw new BadGatewayException('La respuesta no corresponde a RouterOS REST.');
     const snapshot: RouterSnapshot = {
       manufacturer: 'MikroTik', model: String(r['board-name'] || r.platform || 'RouterOS'),
       firmware: String(r.version), uptime: String(r.uptime || ''), interfaces: [],
@@ -47,7 +48,7 @@ export class MikroTikAdapter implements RouterAdapter {
     try {
       const interfaces = await routerJson(`${origin}/rest/interface`, { headers });
       if (!Array.isArray(interfaces)) throw new Error('Invalid interfaces');
-      snapshot.interfaces = interfaces.slice(0, 200).map(i => ({ name: String(i.name || ''), state: i.running === true || i.running === 'true' ? 'up' : 'down' }));
+      snapshot.interfaces = interfaces.slice(0, 200).map(i => ({ name: String(i.name || ''), state: i.running === true || i.running === 'true' ? 'up' : 'down', disabled: i.disabled === true || i.disabled === 'true' }));
     } catch { snapshot.notes.push('No se pudieron consultar las interfaces; verifica los permisos REST.'); }
     try {
       const rules = await this.filterRules(origin, headers as Record<string, string>);
@@ -191,8 +192,8 @@ export class MikroTikAdapter implements RouterAdapter {
     return String(created?.['.id'] || name);
   }
 
-  async departmentSpeed(target:RouterTarget,credentials:RouterCredentials,customerId:number,ips:string[],down:number,up:number):Promise<void>{
-    if(!Number.isInteger(customerId)||customerId<1||!Number.isInteger(down)||!Number.isInteger(up)||down<1||up<1)throw new BadRequestException('Plan de velocidad inválido.');
+  async departmentSpeed(target:RouterTarget,credentials:RouterCredentials,customerId:string,ips:string[],down:number,up:number):Promise<void>{
+    if(typeof customerId!=='string'||!customerId.trim()||!Number.isInteger(down)||!Number.isInteger(up)||down<1||up<1)throw new BadRequestException('Plan de velocidad inválido.');
     const addresses=[...new Set(ips.map(ip=>this.clientIp(ip)))].sort();
     const origin=routerOrigin(target),headers=this.headers(credentials),name=`nuwenet-department-${customerId}`;
     const queues=await routerRest(`${origin}/rest/queue/simple`,{headers}) as Record<string,unknown>[];
@@ -385,7 +386,7 @@ export class MikroTikAdapter implements RouterAdapter {
     const headers = this.headers(credentials) as Record<string, string>;
     const username = options.username?.trim() || 'nuwenet-service';
     const password = options.password || randomBytes(16).toString('hex');
-    const policy = 'read,write,api,firewall,queue,dhcp,rest-api';
+    const policy = 'read,write,rest-api';
 
     const groups = await routerRest(`${origin}/rest/user/group`, { headers }) as Record<string, unknown>[];
     if (!Array.isArray(groups)) throw new BadGatewayException('No se pudieron consultar los grupos de RouterOS.');
@@ -423,6 +424,111 @@ export class MikroTikAdapter implements RouterAdapter {
 
     const script = this.generateCliScript({ username, password });
     return { username, password, script };
+  }
+
+  async setupHttps(target: RouterTarget, credentials: RouterCredentials, options?: { name?: string }): Promise<{ certificate: string; enabled: boolean }> {
+    const origin = routerOrigin(target);
+    const jsonHeaders = { ...this.headers(credentials), 'Content-Type': 'application/json' } as Record<string, string>;
+    const name = options?.name?.trim() || 'nuwenet-local';
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(name)) throw new BadRequestException('Nombre de certificado inválido.');
+    const certificates = await routerRest(`${origin}/rest/certificate`, { headers: this.headers(credentials) }) as Record<string, unknown>[];
+    if (!Array.isArray(certificates)) throw new BadGatewayException('No se pudieron consultar los certificados de RouterOS.');
+    const usable = certificates.some(c => c.name === name && (c['private-key'] === true || c['private-key'] === 'true') && c.ca !== true && c.ca !== 'true');
+    if (!usable) {
+      const created = await routerRest(`${origin}/rest/certificate`, {
+        method: 'PUT', headers: jsonHeaders,
+        body: JSON.stringify({ name, 'common-name': name, 'key-size': 2048, 'days-valid': 3650, 'key-usage': ['tls-server'] }),
+      }) as Record<string, unknown>;
+      const id = created && typeof created['.id'] === 'string' ? String(created['.id']) : '';
+      if (!id) throw new BadGatewayException('RouterOS no devolvió el certificado creado.');
+      await routerRest(`${origin}/rest/certificate/sign`, {
+        method: 'POST', headers: jsonHeaders, body: JSON.stringify({ numbers: id }),
+      });
+    }
+    const services = await this.getServices(target, credentials);
+    const wwwSsl = services.find(s => s.name === 'www-ssl');
+    if (!wwwSsl) throw new BadRequestException('El equipo no expone el servicio www-ssl.');
+    await routerRest(`${origin}/rest/ip/service/${encodeURIComponent(wwwSsl.id)}`, {
+      method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ certificate: name, disabled: false }),
+    });
+    const updated = await this.getServices(target, credentials);
+    const ready = updated.some(s => s.name === 'www-ssl' && !s.disabled && s.certificate === name);
+    if (!ready) throw new BadGatewayException('RouterOS no confirmó el certificado en www-ssl. Revisa el estado del servicio.');
+    return { certificate: name, enabled: true };
+  }
+
+  async setIdentity(target: RouterTarget, credentials: RouterCredentials, name: string): Promise<{ identity: string }> {
+    const clean = name.trim();
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(clean)) throw new BadRequestException('Identidad inválida (letras, números, . _ -).');
+    const origin = routerOrigin(target);
+    const headers = this.headers(credentials) as Record<string, string>;
+    await routerRest(`${origin}/rest/system/identity`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: clean }),
+    });
+    const updated = await routerRest(`${origin}/rest/system/identity`, { headers });
+    const current = Array.isArray(updated) ? updated[0]?.name : (updated as Record<string, unknown>)?.name;
+    if (current !== clean) throw new BadGatewayException('RouterOS no confirmó la identidad. Revisa su estado.');
+    return { identity: clean };
+  }
+
+  async setDns(target: RouterTarget, credentials: RouterCredentials, servers: string[]): Promise<{ servers: string[] }> {
+    const origin = routerOrigin(target);
+    const headers = this.headers(credentials) as Record<string, string>;
+    const clean = servers.map(s => s.trim()).filter(Boolean);
+    if (!clean.length || clean.length > 3) throw new BadRequestException('Indica de 1 a 3 DNS.');
+    for (const server of clean) {
+      const parts = server.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new BadRequestException(`DNS inválido: ${server}.`);
+    }
+    await routerRest(`${origin}/rest/ip/dns/set`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ servers: clean.join(',') }),
+    });
+    const updated = await routerRest(`${origin}/rest/ip/dns`, { headers }) as Record<string, unknown>;
+    const current = String((Array.isArray(updated) ? updated[0]?.servers : updated?.servers) || '');
+    if (clean.some(server => !current.includes(server))) throw new BadGatewayException('RouterOS no confirmó los DNS. Revisa su estado.');
+    return { servers: clean };
+  }
+
+  async addIpAddress(target: RouterTarget, credentials: RouterCredentials, address: { address: string; interface: string }): Promise<{ address: string; interface: string }> {
+    const iface = address.interface.trim();
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(iface)) throw new BadRequestException('Interfaz inválida.');
+    const [ip, prefix] = address.address.trim().split('/');
+    validateRouterHost(ip);
+    if (prefix !== '24') throw new BadRequestException('Solo se admite prefijo /24 en la puesta en marcha.');
+    const origin = routerOrigin(target);
+    const headers = this.headers(credentials) as Record<string, string>;
+    const existing = await routerRest(`${origin}/rest/ip/address`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(existing)) throw new BadGatewayException('No se pudieron consultar las direcciones del equipo.');
+    if (!existing.some(a => a.address === `${ip}/24` && a.interface === iface)) {
+      await routerRest(`${origin}/rest/ip/address`, {
+        method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: `${ip}/24`, interface: iface }),
+      });
+    }
+    const updated = await routerRest(`${origin}/rest/ip/address`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(updated) || !updated.some(a => a.address === `${ip}/24` && a.interface === iface)) {
+      throw new BadGatewayException(`La dirección ${ip}/24 no quedó en ${iface}. Si cambiaste la IP de gestión, verifica en la nueva dirección.`);
+    }
+    return { address: `${ip}/24`, interface: iface };
+  }
+
+  async setEthernetPort(target: RouterTarget, credentials: RouterCredentials, port: { name: string; disabled: boolean }): Promise<{ name: string; disabled: boolean }> {
+    const name = port.name.trim();
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(name)) throw new BadRequestException('Nombre de puerto inválido.');
+    const origin = routerOrigin(target);
+    const headers = this.headers(credentials) as Record<string, string>;
+    const ports = await routerRest(`${origin}/rest/interface/ethernet`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(ports)) throw new BadGatewayException('No se pudieron consultar los puertos ethernet.');
+    const match = ports.find(p => p.name === name);
+    if (!match?.['.id']) throw new BadRequestException(`Puerto ${name} no encontrado en el equipo.`);
+    await routerRest(`${origin}/rest/interface/ethernet/${encodeURIComponent(String(match['.id']))}`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ disabled: port.disabled }),
+    });
+    const updated = await routerRest(`${origin}/rest/interface/ethernet`, { headers }) as Record<string, unknown>[];
+    const current = Array.isArray(updated) ? updated.find(p => p.name === name) : null;
+    const disabled = current?.disabled === true || current?.disabled === 'true';
+    if (disabled !== port.disabled) throw new BadGatewayException(`El puerto ${name} no confirmó el cambio. Revisa su estado.`);
+    return { name, disabled };
   }
 
   async getTrafficStats(target: RouterTarget, credentials: RouterCredentials, ipOrQueueName?: string): Promise<TrafficStat[]> {
@@ -475,6 +581,178 @@ export class MikroTikAdapter implements RouterAdapter {
       .filter(d => {const mac=normalize(d.mac);if(!/^[A-F0-9]{12}$/.test(mac)||linked.has(mac)||seen.has(mac))return false;seen.add(mac);return true;});
   }
 
+  async setupWan(target: RouterTarget, credentials: RouterCredentials, options: { wanInterface?: string; wanDhcp?: boolean; nat?: boolean }): Promise<{ wanInterface: string; dhcpClient: boolean; nat: boolean }> {
+    const wanInterface = options.wanInterface?.trim() || 'ether1';
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(wanInterface)) throw new BadRequestException('Interfaz WAN inválida.');
+    if (!options.wanDhcp && !options.nat) throw new BadRequestException('Activa DHCP en WAN o NAT saliente.');
+    const origin = routerOrigin(target);
+    const headers = this.headers(credentials) as Record<string, string>;
+    const json = { ...headers, 'Content-Type': 'application/json' };
+    if (options.wanDhcp) {
+      const clients = await routerRest(`${origin}/rest/ip/dhcp-client`, { headers }) as Record<string, unknown>[];
+      if (!Array.isArray(clients)) throw new BadGatewayException('No se pudieron consultar los clientes DHCP.');
+      const match = clients.find(c => c.interface === wanInterface);
+      if (match?.['.id']) {
+        await routerRest(`${origin}/rest/ip/dhcp-client/${encodeURIComponent(String(match['.id']))}`, {
+          method: 'PATCH', headers: json, body: JSON.stringify({ disabled: false, comment: 'NuweNet WAN' }),
+        });
+      } else {
+        await routerRest(`${origin}/rest/ip/dhcp-client`, {
+          method: 'PUT', headers: json, body: JSON.stringify({ interface: wanInterface, disabled: false, comment: 'NuweNet WAN' }),
+        });
+      }
+      const updated = await routerRest(`${origin}/rest/ip/dhcp-client`, { headers }) as Record<string, unknown>[];
+      if (!Array.isArray(updated) || !updated.some(c => c.interface === wanInterface && c.disabled !== true && c.disabled !== 'true')) {
+        throw new BadGatewayException(`DHCP-client no quedó activo en ${wanInterface}. Revisa su estado.`);
+      }
+    }
+    if (options.nat) {
+      const rules = await routerRest(`${origin}/rest/ip/firewall/nat`, { headers }) as Record<string, unknown>[];
+      if (!Array.isArray(rules)) throw new BadGatewayException('No se pudieron consultar las reglas NAT.');
+      const match = rules.find(r => r.comment === 'NuweNet NAT');
+      if (match?.['.id']) {
+        await routerRest(`${origin}/rest/ip/firewall/nat/${encodeURIComponent(String(match['.id']))}`, {
+          method: 'PATCH', headers: json,
+          body: JSON.stringify({ chain: 'srcnat', 'out-interface': wanInterface, action: 'masquerade', disabled: false, comment: 'NuweNet NAT' }),
+        });
+      } else {
+        await routerRest(`${origin}/rest/ip/firewall/nat`, {
+          method: 'PUT', headers: json,
+          body: JSON.stringify({ chain: 'srcnat', 'out-interface': wanInterface, action: 'masquerade', comment: 'NuweNet NAT', disabled: false }),
+        });
+      }
+      const updated = await routerRest(`${origin}/rest/ip/firewall/nat`, { headers }) as Record<string, unknown>[];
+      if (!Array.isArray(updated) || !updated.some(r => r.comment === 'NuweNet NAT' && r.disabled !== true && r.disabled !== 'true')) {
+        throw new BadGatewayException('NAT no quedó activo. Revisa su estado.');
+      }
+    }
+    return { wanInterface, dhcpClient: !!options.wanDhcp, nat: !!options.nat };
+  }
+
+  async setupLanDhcp(target: RouterTarget, credentials: RouterCredentials, options: { lan?: string; lanInterface?: string; pool?: string; dns?: string; leases?: { mac: string; address: string; comment?: string }[] }): Promise<{ lan: string; lanInterface: string; pool: string; dns: string; leases: number }> {
+    const v4 = (value: string) => {
+      const parts = value.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new BadRequestException(`IPv4 inválida: ${value}.`);
+      return parts;
+    };
+    if (!options.lan || !/^(\d{1,3}\.){3}\d{1,3}\/24$/.test(options.lan)) throw new BadRequestException('Indica la dirección LAN en formato 192.168.10.1/24.');
+    const lanInterface = options.lanInterface?.trim() || 'ether2';
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(lanInterface)) throw new BadRequestException('Interfaz LAN inválida.');
+    const [lanAddr] = options.lan.split('/');
+    const lanOctets = v4(lanAddr);
+    if (lanOctets[3] === 0 || lanOctets[3] === 255) throw new BadRequestException('La dirección LAN no puede ser .0 ni .255.');
+    const prefix = lanOctets.slice(0, 3).join('.');
+    const network = `${prefix}.0/24`;
+    if (!options.pool) throw new BadRequestException('Indica el pool DHCP (p. ej. 192.168.10.100-192.168.10.200).');
+    const [poolStart, poolEnd] = options.pool.split('-');
+    if (!poolStart || !poolEnd) throw new BadRequestException('Pool inválido (p. ej. 192.168.10.100-192.168.10.200).');
+    const start = v4(poolStart), end = v4(poolEnd);
+    for (const [label, octets] of [['inicio', start], ['fin', end]] as const) {
+      if (octets.slice(0, 3).join('.') !== prefix) throw new BadRequestException(`El ${label} del pool debe estar en ${network}.`);
+      if (octets[3] < 1 || octets[3] > 254) throw new BadRequestException(`El ${label} del pool debe estar entre .1 y .254.`);
+    }
+    if (start[3] >= end[3]) throw new BadRequestException('El inicio del pool debe ser menor que el fin.');
+    const dns = (options.dns || '8.8.8.8,1.1.1.1').split(',').map(s => s.trim()).filter(Boolean);
+    if (!dns.length || dns.length > 3) throw new BadRequestException('Indica de 1 a 3 DNS separados por coma.');
+    for (const server of dns) v4(server);
+    const leases = options.leases || [];
+    if (leases.length > 250) throw new BadRequestException('Máximo 250 leases por operación.');
+    const seenMacs = new Set<string>(), seenIps = new Set<string>();
+    for (const lease of leases) {
+      if (!/^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(lease.mac)) throw new BadRequestException(`MAC inválida: ${lease.mac}.`);
+      const ipOctets = v4(lease.address);
+      if (ipOctets.slice(0, 3).join('.') !== prefix) throw new BadRequestException(`El lease ${lease.address} debe estar en ${network}.`);
+      if (ipOctets[3] < 1 || ipOctets[3] > 254) throw new BadRequestException(`El lease ${lease.address} debe estar entre .1 y .254.`);
+      if (start[3] <= ipOctets[3] && ipOctets[3] <= end[3]) throw new BadRequestException(`El lease ${lease.address} choca con el pool dinámico; usa una IP fuera de ${options.pool}.`);
+      const mac = lease.mac.toUpperCase();
+      if (seenMacs.has(mac) || seenIps.has(lease.address)) throw new BadRequestException(`Lease duplicado: ${lease.mac} / ${lease.address}.`);
+      seenMacs.add(mac); seenIps.add(lease.address);
+      if (lease.comment && (lease.comment.length > 80 || /[\r\n"]/.test(lease.comment))) throw new BadRequestException('Comentario de lease inválido (máximo 80 caracteres, sin comillas ni saltos).');
+    }
+    const origin = routerOrigin(target);
+    const headers = this.headers(credentials) as Record<string, string>;
+    const json = { ...headers, 'Content-Type': 'application/json' };
+    // 1. Dirección LAN (reutiliza la lógica verificada de puesta en marcha).
+    await this.addIpAddress(target, credentials, { address: options.lan, interface: lanInterface });
+    // 2. Pool.
+    const pools = await routerRest(`${origin}/rest/ip/pool`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(pools)) throw new BadGatewayException('No se pudo consultar el pool DHCP.');
+    const poolMatch = pools.find(p => p.name === 'nuwenet-lan');
+    if (poolMatch?.['.id']) {
+      await routerRest(`${origin}/rest/ip/pool/${encodeURIComponent(String(poolMatch['.id']))}`, {
+        method: 'PATCH', headers: json, body: JSON.stringify({ ranges: options.pool }),
+      });
+    } else {
+      await routerRest(`${origin}/rest/ip/pool`, {
+        method: 'PUT', headers: json, body: JSON.stringify({ name: 'nuwenet-lan', ranges: options.pool }),
+      });
+    }
+    const poolsOk = await routerRest(`${origin}/rest/ip/pool`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(poolsOk) || !poolsOk.some(p => p.name === 'nuwenet-lan' && String(p.ranges || '').includes(options.pool!.split('-')[0]))) {
+      throw new BadGatewayException('El pool no quedó configurado. Revisa su estado.');
+    }
+    // 3. Red DHCP (gateway + DNS).
+    const networks = await routerRest(`${origin}/rest/ip/dhcp-server/network`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(networks)) throw new BadGatewayException('No se pudo consultar la red DHCP.');
+    const netMatch = networks.find(n => n.address === network);
+    if (netMatch?.['.id']) {
+      await routerRest(`${origin}/rest/ip/dhcp-server/network/${encodeURIComponent(String(netMatch['.id']))}`, {
+        method: 'PATCH', headers: json, body: JSON.stringify({ gateway: lanAddr, 'dns-server': dns.join(','), comment: 'NuweNet LAN' }),
+      });
+    } else {
+      await routerRest(`${origin}/rest/ip/dhcp-server/network`, {
+        method: 'PUT', headers: json, body: JSON.stringify({ address: network, gateway: lanAddr, 'dns-server': dns.join(','), comment: 'NuweNet LAN' }),
+      });
+    }
+    // 4. Servidor DHCP.
+    const servers = await routerRest(`${origin}/rest/ip/dhcp-server`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(servers)) throw new BadGatewayException('No se pudo consultar el servidor DHCP.');
+    const serverMatch = servers.find(s => s.name === 'nuwenet-lan');
+    if (serverMatch?.['.id']) {
+      await routerRest(`${origin}/rest/ip/dhcp-server/${encodeURIComponent(String(serverMatch['.id']))}`, {
+        method: 'PATCH', headers: json, body: JSON.stringify({ interface: lanInterface, 'address-pool': 'nuwenet-lan', disabled: false, comment: 'NuweNet LAN' }),
+      });
+    } else {
+      await routerRest(`${origin}/rest/ip/dhcp-server`, {
+        method: 'PUT', headers: json, body: JSON.stringify({ name: 'nuwenet-lan', interface: lanInterface, 'address-pool': 'nuwenet-lan', disabled: false, comment: 'NuweNet LAN' }),
+      });
+    }
+    const serversOk = await routerRest(`${origin}/rest/ip/dhcp-server`, { headers }) as Record<string, unknown>[];
+    if (!Array.isArray(serversOk) || !serversOk.some(s => s.name === 'nuwenet-lan' && s.disabled !== true && s.disabled !== 'true')) {
+      throw new BadGatewayException('El servidor DHCP no quedó habilitado. Revisa su estado.');
+    }
+    // 5. Leases estáticos (solo altas/actualizaciones por MAC; no se eliminan leases existentes).
+    if (leases.length) {
+      const current = await routerRest(`${origin}/rest/ip/dhcp-server/lease`, { headers }) as Record<string, unknown>[];
+      if (!Array.isArray(current)) throw new BadGatewayException('No se pudieron consultar los leases DHCP.');
+      const byMac = new Map(current.map(l => [String(l['mac-address'] || '').toUpperCase(), l]));
+      for (const lease of leases) {
+        const mac = lease.mac.toUpperCase();
+        const match = byMac.get(mac);
+        const body: Record<string, unknown> = { address: lease.address, 'mac-address': mac };
+        if (lease.comment) body.comment = lease.comment;
+        if (match?.['.id']) {
+          await routerRest(`${origin}/rest/ip/dhcp-server/lease/${encodeURIComponent(String(match['.id']))}`, {
+            method: 'PATCH', headers: json, body: JSON.stringify(body),
+          });
+        } else {
+          await routerRest(`${origin}/rest/ip/dhcp-server/lease`, {
+            method: 'PUT', headers: json, body: JSON.stringify(body),
+          });
+        }
+      }
+      const after = await routerRest(`${origin}/rest/ip/dhcp-server/lease`, { headers }) as Record<string, unknown>[];
+      if (!Array.isArray(after)) throw new BadGatewayException('No se pudo verificar los leases DHCP.');
+      const afterByMac = new Map(after.map(l => [String(l['mac-address'] || '').toUpperCase(), String(l.address || '')]));
+      for (const lease of leases) {
+        if (afterByMac.get(lease.mac.toUpperCase()) !== lease.address) {
+          throw new BadGatewayException(`El lease ${lease.address} no quedó registrado. Revisa su estado.`);
+        }
+      }
+    }
+    return { lan: options.lan, lanInterface, pool: options.pool, dns: dns.join(','), leases: leases.length };
+  }
+
   generateCliScript(options: GenerateScriptOptions): string {
     const username = options.username || 'nuwenet-service';
     const password = options.password || 'CAMBIA_ESTA_CONTRASENA';
@@ -486,7 +764,7 @@ export class MikroTikAdapter implements RouterAdapter {
     const lines = [
       '# === NuweNet RouterOS Setup Script ===',
       '# 1. Crear grupo con privilegios reducidos para NuweNet',
-      '/user group add name=nuwenet policy=read,write,api,firewall,queue,dhcp,rest-api comment="NuweNet System"',
+      '/user group add name=nuwenet policy=read,write,rest-api comment="NuweNet System"',
       '# 2. Crear usuario de servicio NuweNet',
       `/user add name=${username} group=nuwenet password="${quote(password)}" comment="NuweNet Backend Service"`,
       '# 3. Asegurar servicio REST (SSL)',
@@ -501,6 +779,61 @@ export class MikroTikAdapter implements RouterAdapter {
     if (options.restrictIp) {
       lines.push(`# 5. Restringir acceso REST a la IP del servidor NuweNet`);
       lines.push(`/ip service set www-ssl address="${options.restrictIp}"`);
+    }
+    if (options.wanDhcp || options.nat) {
+      const wanInterface = options.wanInterface?.trim() || 'ether1';
+      if (!/^[a-zA-Z0-9._-]{1,64}$/.test(wanInterface)) throw new Error('Interfaz WAN inválida.');
+      lines.push('# 7. Uplink hacia el proveedor (DHCP + NAT para la LAN)');
+      if (options.wanDhcp) lines.push(`/ip dhcp-client add interface=${wanInterface} disabled=no comment="NuweNet WAN"`);
+      if (options.nat) lines.push(`/ip firewall nat add chain=srcnat out-interface=${wanInterface} action=masquerade comment="NuweNet NAT"`);
+    }
+    if (options.lan || options.pool || (options.leases?.length)) {
+      const v4 = (value: string) => {
+        const parts = value.split('.').map(Number);
+        if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new Error(`IPv4 inválida: ${value}.`);
+        return parts;
+      };
+      if (!options.lan || !/^(\d{1,3}\.){3}\d{1,3}\/24$/.test(options.lan)) throw new Error('Indica la dirección LAN en formato 192.168.10.1/24.');
+      const lanInterface = options.lanInterface || 'ether2';
+      if (!/^[a-zA-Z0-9._-]{1,64}$/.test(lanInterface)) throw new Error('Interfaz LAN inválida.');
+      const [lanAddr] = options.lan.split('/');
+      const lanOctets = v4(lanAddr);
+      if (lanOctets[3] === 0 || lanOctets[3] === 255) throw new Error('La dirección LAN no puede ser .0 ni .255.');
+      const prefix = lanOctets.slice(0, 3).join('.');
+      const network = `${prefix}.0/24`;
+      if (!options.pool) throw new Error('Indica el pool DHCP (p. ej. 192.168.10.100-192.168.10.200).');
+      const [poolStart, poolEnd] = options.pool.split('-');
+      const start = v4(poolStart), end = v4(poolEnd);
+      for (const [label, octets] of [['inicio', start], ['fin', end]] as const) {
+        if (octets.slice(0, 3).join('.') !== prefix) throw new Error(`El ${label} del pool debe estar en ${network}.`);
+        if (octets[3] < 1 || octets[3] > 254) throw new Error(`El ${label} del pool debe estar entre .1 y .254.`);
+      }
+      if (start[3] >= end[3]) throw new Error('El inicio del pool debe ser menor que el fin.');
+      const dns = (options.dns || '8.8.8.8,1.1.1.1').split(',').map(s => s.trim()).filter(Boolean);
+      if (!dns.length || dns.length > 3) throw new Error('Indica de 1 a 3 DNS separados por coma.');
+      for (const server of dns) v4(server);
+      const leases = options.leases || [];
+      if (leases.length > 250) throw new Error('Máximo 250 leases por script.');
+      const seenMacs = new Set<string>(), seenIps = new Set<string>();
+      for (const lease of leases) {
+        if (!/^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(lease.mac)) throw new Error(`MAC inválida: ${lease.mac}.`);
+        const ipOctets = v4(lease.address);
+        if (ipOctets.slice(0, 3).join('.') !== prefix) throw new Error(`El lease ${lease.address} debe estar en ${network}.`);
+        if (ipOctets[3] < 1 || ipOctets[3] > 254) throw new Error(`El lease ${lease.address} debe estar entre .1 y .254.`);
+        if (start[3] <= ipOctets[3] && ipOctets[3] <= end[3]) throw new Error(`El lease ${lease.address} choca con el pool dinámico; usa una IP fuera de ${options.pool}.`);
+        const mac = lease.mac.toUpperCase();
+        if (seenMacs.has(mac) || seenIps.has(lease.address)) throw new Error(`Lease duplicado: ${lease.mac} / ${lease.address}.`);
+        seenMacs.add(mac); seenIps.add(lease.address);
+        if (lease.comment && (lease.comment.length > 80 || /[\r\n"]/.test(lease.comment))) throw new Error('Comentario de lease inválido (máximo 80 caracteres, sin comillas ni saltos).');
+      }
+      lines.push('# 6. Red LAN y DHCP con leases estáticos (switch y departamentos)');
+      lines.push(`/ip address add address=${options.lan} interface=${lanInterface} comment="NuweNet LAN"`);
+      lines.push(`/ip pool add name=nuwenet-lan ranges=${options.pool}`);
+      lines.push(`/ip dhcp-server network add address=${network} gateway=${lanAddr} dns-server=${dns.join(',')} comment="NuweNet LAN"`);
+      lines.push(`/ip dhcp-server add name=nuwenet-lan interface=${lanInterface} address-pool=nuwenet-lan disabled=no comment="NuweNet LAN"`);
+      for (const lease of leases) {
+        lines.push(`/ip dhcp-server lease add address=${lease.address} mac-address=${lease.mac.toUpperCase()}${lease.comment ? ` comment="${quote(lease.comment)}"` : ''}`);
+      }
     }
     return lines.join('\n');
   }

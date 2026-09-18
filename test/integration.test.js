@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { routerContract } from './router-contract';
+import { uuidv7 } from '../apps/api/dist/common/uuid.js';
 
 test('gestión, cobros, control simulado y persistencia', async () => {
   const directory = mkdtempSync(path.join(tmpdir(),'nuwenet-test-'));
@@ -36,9 +37,10 @@ test('gestión, cobros, control simulado y persistencia', async () => {
     assert.equal((await request('state')).customers.length,0);
     await request('plans',{name:'Hogar',down:50,up:20,price:99.90});
     await request('plans',{name:'Error',down:-1,up:10,price:10},400);
-    let s=await request('customers',{apartment:'101',name:'Ana',plan_id:1});
+    const planId=(await request('state')).plans[0].id;
+    let s=await request('customers',{apartment:'101',name:'Ana',plan_id:planId});
     assert.equal(s.customers[0].price,9990);
-    await request('customers',{apartment:'101',name:'Duplicado',plan_id:1},400);
+    await request('customers',{apartment:'101',name:'Duplicado',plan_id:planId},400);
     await request('billing',{period:'2020-01',due:'2020-02-31'},400);
     await Promise.all(Array.from({length: 5}, () => request('billing',{period:'2020-01',due:'2020-01-10'})));
     s=await request('state');
@@ -58,8 +60,8 @@ test('gestión, cobros, control simulado y persistencia', async () => {
     const eventCount=s.events.length;
     s=await request('pay',{id:february});
     assert.equal(s.events.length,eventCount,'El pago repetido es idempotente');
-    await request('access',{id:999,status:'suspended'},400);
-    await request('access',{id:1,status:'invalid'},400);
+    await request('access',{id:uuidv7(),status:'suspended'},400);
+    await request('access',{id:s.customers[0].id,status:'invalid'},400);
     const denied=await fetch(`http://127.0.0.1:${port}/api/overdue`,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://example.com'},body:'{}'});
     assert.equal(denied.status,403);
     const homepage = await fetch(`http://127.0.0.1:${port}/`);

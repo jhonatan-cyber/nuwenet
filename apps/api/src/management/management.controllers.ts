@@ -1,7 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ManagementService } from './management.service';
 import { Roles } from '../common/roles.decorator';
-import { BankSettingsDto, AccessDto, ArchiveCustomerDto, AssignBuildingDto, BillingDto, BuildingCentralDto, ChangeHolderDto, CreateBuildingDto, CreateCustomerDto, CreatePlanDto, IdDto, PayDto, PortalPaymentReportDto, RemoveBuildingDto, ReviewPaymentReportDto, ReversePaymentDto, RotatePortalLinkDto, SendWhatsappDto, SetCustomerIpDto, SettingsDto, StateQuery, ToggleBuildingDto, UpdateBuildingDto, UpdateCustomerDto, UpdatePlanDto } from './dto';
+import { AccessDto, ArchiveCustomerDto, AssignBuildingDto, BillingDto, BuildingCentralDto, ChangeHolderDto, CreateBuildingDto, CreateCustomerDto, CreatePlanDto, IdDto, PayDto, RemoveBuildingDto, ReversePaymentDto, RotatePortalLinkDto, SetCustomerIpDto, SettingsDto, StateQuery, ToggleBuildingDto, UpdateBuildingDto, UpdateCustomerDto, UpdatePlanDto } from './dto';
 
 @Roles('admin', 'superadmin')
 @Controller('state')
@@ -37,24 +37,12 @@ export class CustomersController {
 @Controller()
 export class BillingController {
   constructor(private readonly service: ManagementService) {}
-  @Get('invoices/:id/bank') invoiceBank(@Param('id',ParseIntPipe) id:number) {return this.service.invoiceBank(id);}
   @Post('billing') @HttpCode(200)
   generate(@Body() dto: BillingDto) { return this.service.generateBilling(dto); }
   @Post('pay') @HttpCode(200)
   pay(@Body() dto: PayDto) { return this.service.pay(dto); }
-  @Get('payments/:id/receipt') receipt(@Param('id', ParseIntPipe) id: number) { return this.service.receipt(id); }
+  @Get('payments/:id/receipt') receipt(@Param('id', ParseUUIDPipe) id: string) { return this.service.receipt(id); }
   @Post('payments/reverse') @HttpCode(200) reverse(@Body() dto: ReversePaymentDto) { return this.service.reversePayment(dto); }
-  // WhatsApp directo — envía aviso/recibo a residente con un clic
-  @Post('invoices/:id/send-whatsapp') @HttpCode(200) invoiceWhatsappById(@Param('id',ParseIntPipe) id:number) { return this.service.sendInvoiceWhatsapp({id}); }
-  @Post('payments/:id/send-whatsapp') @HttpCode(200) paymentWhatsappById(@Param('id',ParseIntPipe) id:number) { return this.service.sendPaymentWhatsapp({id}); }
-  @Post('invoices/send-whatsapp') @HttpCode(200)
-  invoiceWhatsapp(@Body() dto: SendWhatsappDto) { return this.service.sendInvoiceWhatsapp(dto); }
-  @Post('payments/send-whatsapp') @HttpCode(200)
-  paymentWhatsapp(@Body() dto: SendWhatsappDto) { return this.service.sendPaymentWhatsapp(dto); }
-  // Reportes de transferencia enviados por los residentes desde el portal
-  @Get('payment-reports') paymentReports(@Query('building_id') bid?: string) { return this.service.listPaymentReports(bid ? Number(bid) : undefined); }
-  @Post('payment-reports/review') @HttpCode(200)
-  reviewReport(@Body() dto: ReviewPaymentReportDto) { return this.service.reviewPaymentReport(dto); }
 }
 
 @Roles('admin', 'superadmin')
@@ -74,8 +62,6 @@ export class AccessController {
 @Controller('buildings')
 export class BuildingsController {
   constructor(private readonly service: ManagementService) {}
-  @Get(':id/bank') bank(@Param('id',ParseIntPipe) id:number) { return this.service.bankSettings(id); }
-  @Post(':id/bank') @HttpCode(200) saveBank(@Param('id',ParseIntPipe) id:number,@Body() dto:BankSettingsDto) { return this.service.saveBankSettings(id,{...dto}); }
   @Get() list() { return this.service.listBuildings(); }
   @Roles('superadmin') @Post() @HttpCode(200) create(@Body() dto: CreateBuildingDto) { return this.service.createBuilding(dto); }
   @Roles('superadmin') @Post('assign') @HttpCode(200) assign(@Body() dto: AssignBuildingDto) { return this.service.assignBuilding(dto); }
@@ -90,10 +76,7 @@ export class BuildingsController {
 @Controller('portal')
 export class PortalController {
   constructor(private readonly service: ManagementService) {}
-  @Get('notice') notice(@Query('building_id') bid?:string) {return this.service.publicNotice(bid&&/^\d+$/.test(bid)?Number(bid):undefined);}
+  @Get('notice') notice(@Query('building_id') bid?:string) {return this.service.publicNotice(bid);}
   @Get('traffic') traffic(@Query('token') token:string) {return this.service.portalTraffic(token);}
   @Get() data(@Query('token') token: string) { return this.service.portalData(token); }
-  @Post('report') @HttpCode(200) report(@Body() dto: PortalPaymentReportDto) {
-    return this.service.portalReportPayment({ token: dto.token, amount: dto.amount, reference: dto.reference, notes: dto.notes });
-  }
 }

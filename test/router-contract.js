@@ -1,18 +1,22 @@
 import assert from 'node:assert/strict';
+import { uuidv7 } from '../apps/api/dist/common/uuid.js';
 
 export async function routerContract(request) {
   const adapters = await request('routers/adapters');
-  assert.equal(adapters.length, 3);
+  assert.equal(adapters.length, 4);
   assert.equal(adapters.find(adapter => adapter.id === 'mikrotik-rest').capabilities.suspend, true);
   assert.equal(adapters.find(adapter => adapter.id === 'mikrotik-rest').capabilities.speed_limit, true);
   assert.equal(adapters.find(adapter => adapter.id === 'arris-touchstone').capabilities.suspend, true);
   assert.equal(adapters.find(adapter => adapter.id === 'arris-touchstone').capabilities.speed_limit, false);
   assert.equal(adapters.find(adapter => adapter.id === 'openwrt-ubus').capabilities.suspend, false);
+  assert.equal(adapters.find(adapter => adapter.id === 'tr369-usp').capabilities.suspend, false);
+  assert.equal(adapters.find(adapter => adapter.id === 'tr369-usp').capabilities.identification, true);
   const payload = { name:'Router de prueba', adapter:'mikrotik-rest', host:'192.168.99.1', port:443, protocol:'https', username:'fixture-user', password:'fixture-only-secret' };
   let result = await request('routers', payload);
   const id = result.routers.at(-1).id;
   assert.equal(result.routers.at(-1).status, 'untested');
   assert.equal(result.routers.at(-1).credentials_saved, true);
+  assert.equal(result.routers.at(-1).compatibility, 'full');
   assert.equal(JSON.stringify(result).includes(payload.password), false);
   assert.equal(JSON.stringify(result).includes(payload.username), false);
   assert.equal('credentials' in result.routers.at(-1), false);
@@ -44,5 +48,5 @@ export async function routerContract(request) {
   customers = await request('customers/ip', { id: customerId, ip:'192.168.99.51' });
   assert.equal(customers.customers.find(customer => customer.apartment === 'CR-102').ip, '192.168.99.51');
   await request('customers/ip', { id: customerId, ip:'8.8.8.8' }, 400);
-  await request('customers/ip', { id: 999999, ip:'192.168.99.60' }, 400);
+  await request('customers/ip', { id: uuidv7(), ip:'192.168.99.60' }, 400);
 }

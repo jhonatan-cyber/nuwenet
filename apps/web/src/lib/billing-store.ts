@@ -1,9 +1,9 @@
 export interface Invoice {
-  id: number; apartment: string; name: string; period: string; due: string;
+  id: string; apartment: string; name: string; period: string; due: string;
   amount: number; paid_total: number | string; paid_at: string | null;
 }
 export interface Payment {
-  id: number; apartment: string; period: string; amount: number; method: string;
+  id: string; apartment: string; period: string; amount: number; method: string;
   reference: string; created_at: string; actor: string | null;
   reversed_at: string | null; reversal_reason: string | null;
 }
@@ -11,9 +11,9 @@ export interface BillingContext {
   page: 'billing' | 'payments';
   invoices: Invoice[]; payments: Payment[];
   pagination: { size: number; invoices: { page: number; total: number }; payments: { page: number; total: number } };
-  buildings: { id: number; name: string }[];
-  buildingId: number | null; currency: string; today: string;
-  customerId: number | null; canPay: boolean; isAdmin: boolean; superadmin: boolean; userId: number;
+  buildings: { id: string; name: string }[];
+  buildingId: string | null; currency: string; today: string;
+  customerId: string | null; canPay: boolean; isAdmin: boolean; superadmin: boolean; userId: string;
   money: (value: number) => string; date: (value: string) => string;
   request: (route: string, body?: Record<string, unknown>) => Promise<any>;
   refresh: () => Promise<void>;

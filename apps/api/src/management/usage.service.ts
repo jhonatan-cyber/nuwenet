@@ -1,3 +1,4 @@
+import {forEachConcurrent} from '../common/concurrency';
 import {BadRequestException, ForbiddenException, Injectable} from '@nestjs/common';
 import {createHash} from 'node:crypto';
 import type {TransactionSQL} from 'bun';
@@ -5,10 +6,11 @@ import {DatabaseService} from '../database/database.service';
 import {RoutersService} from '../routers/routers.service';
 import type {TrafficStat} from '../routers/router.types';
 import {requestContext} from '../common/request-context';
+import {uuidv7} from '../common/uuid';
 import {splitUsage, usageDay, validCounter, USAGE_GAP_MS, USAGE_ZONE} from './usage-math';
 
-interface Customer {id:number; building_id:number; ip:string|null; central_router_id:number|null}
-interface Cursor {customer_id:number; queue_name:string; queue_id:string|null; download_bytes:number|string; upload_bytes:number|string; observed_at:string; missing:number}
+interface Customer {id:string; building_id:string; ip:string|null; central_router_id:string|null}
+interface Cursor {customer_id:string; queue_name:string; queue_id:string|null; download_bytes:number|string; upload_bytes:number|string; observed_at:string; missing:number}
 interface Day {day:string; download_bytes:number|string; upload_bytes:number|string; samples:number|string; resets:number|string; gaps:number|string; estimated_bytes:number|string}
 
 @Injectable()
@@ -20,18 +22,18 @@ export class UsageService {
     if(this.collecting)return;
     this.collecting=true;
     try {
-      const routers=await this.db.read(tx=>tx<{id:number}[]>`SELECT DISTINCT r.id FROM routers r JOIN buildings b ON b.central_router_id=r.id AND b.id=r.building_id WHERE r.disabled=0 AND b.disabled=0 AND r.adapter='mikrotik-rest'`);
-      for(const router of routers) {
+      const routers=await this.db.read(tx=>tx<{id:string}[]>`SELECT DISTINCT r.id FROM routers r JOIN buildings b ON b.central_router_id=r.id AND b.id=r.building_id WHERE r.disabled=0 AND b.disabled=0 AND r.adapter='mikrotik-rest'`);
+      await forEachConcurrent(routers,3,async router=>{
         const at=new Date().toISOString();
         try {await this.record(router.id,await this.routers.getTraffic(router.id),at);}
         catch {
-          await this.db.write(tx=>tx`INSERT INTO usage_router_state(router_id,last_attempt,status) VALUES (${router.id},${at},${'unavailable'}) ON CONFLICT(router_id) DO UPDATE SET last_attempt=excluded.last_attempt,status=excluded.status WHERE usage_router_state.last_attempt<excluded.last_attempt`);
+          await this.db.write(tx=>tx`INSERT INTO usage_router_state(id,router_id,last_attempt,status) VALUES (${uuidv7()},${router.id},${at},${'unavailable'}) ON CONFLICT(router_id) DO UPDATE SET last_attempt=excluded.last_attempt,status=excluded.status WHERE usage_router_state.last_attempt<excluded.last_attempt`);
         }
-      }
+      });
     } finally {this.collecting=false;}
   }
 
-  async record(routerId:number, stats:TrafficStat[], at:string) {
+  async record(routerId:string, stats:TrafficStat[], at:string) {
     const timestamp=Date.parse(at);
     if(!Number.isFinite(timestamp))throw new BadRequestException('Fecha de muestra inválida.');
     at=new Date(timestamp).toISOString();
@@ -41,7 +43,7 @@ export class UsageService {
       const [health]=await tx`SELECT last_attempt FROM usage_router_state WHERE router_id=${routerId}`;
       if(health && health.last_attempt>=at)return; // late/duplicate responses from another worker
       const customers=await tx<Customer[]>`SELECT c.id,c.building_id,c.ip,b.central_router_id FROM customers c JOIN buildings b ON b.id=c.building_id WHERE c.building_id=${router.building_id} AND c.archived=0`;
-      const targets=await tx<{customer_id:number;ip:string}[]>`SELECT customer_id,ip FROM customer_network_targets WHERE router_id=${routerId}`;
+      const targets=await tx<{customer_id:string;ip:string}[]>`SELECT customer_id,ip FROM customer_network_targets WHERE router_id=${routerId}`;
       const previous=await tx<Cursor[]>`SELECT * FROM usage_cursors WHERE router_id=${routerId}`;
       // A disappeared queue must establish a new baseline if it returns later.
       await tx`UPDATE usage_cursors SET missing=1 WHERE router_id=${routerId}`;
@@ -55,7 +57,7 @@ export class UsageService {
         for(const sample of selected) {
           if(selected.filter(q=>q.name===sample.name).length!==1){invalid=true;continue;}
           if(!validCounter(sample.downloadBytes)||!validCounter(sample.uploadBytes)){invalid=true;continue;}
-          const old=previous.find(p=>Number(p.customer_id)===customer.id&&p.queue_name===sample.name);
+          const old=previous.find(p=>p.customer_id===customer.id&&p.queue_name===sample.name);
           const changed=Boolean(old && (old.queue_id||null)!==(sample.id||null));
           const elapsed=old?timestamp-Date.parse(old.observed_at):0;
           const stale=elapsed>31*86_400_000;
@@ -77,21 +79,21 @@ export class UsageService {
             if(gap)await this.event(tx,customer.id,at,'sampling_gap');
             await this.addDay(tx,customer.id,day,0,0,0,reset?1:0,gap?1:0,0);
           }
-          await tx`INSERT INTO usage_cursors(router_id,customer_id,queue_name,queue_id,download_bytes,upload_bytes,observed_at,missing) VALUES (${routerId},${customer.id},${sample.name},${sample.id||null},${sample.downloadBytes},${sample.uploadBytes},${at},0) ON CONFLICT(router_id,customer_id,queue_name) DO UPDATE SET queue_id=excluded.queue_id,download_bytes=excluded.download_bytes,upload_bytes=excluded.upload_bytes,observed_at=excluded.observed_at,missing=0`;
+          await tx`INSERT INTO usage_cursors(id,router_id,customer_id,queue_name,queue_id,download_bytes,upload_bytes,observed_at,missing) VALUES (${uuidv7()},${routerId},${customer.id},${sample.name},${sample.id||null},${sample.downloadBytes},${sample.uploadBytes},${at},0) ON CONFLICT(router_id,customer_id,queue_name) DO UPDATE SET queue_id=excluded.queue_id,download_bytes=excluded.download_bytes,upload_bytes=excluded.upload_bytes,observed_at=excluded.observed_at,missing=0`;
         }
       }
-      await tx`INSERT INTO usage_router_state(router_id,last_attempt,last_success,status) VALUES (${routerId},${at},${at},${invalid?'partial':'ok'}) ON CONFLICT(router_id) DO UPDATE SET last_attempt=excluded.last_attempt,last_success=excluded.last_success,status=excluded.status`;
+      await tx`INSERT INTO usage_router_state(id,router_id,last_attempt,last_success,status) VALUES (${uuidv7()},${routerId},${at},${at},${invalid?'partial':'ok'}) ON CONFLICT(router_id) DO UPDATE SET last_attempt=excluded.last_attempt,last_success=excluded.last_success,status=excluded.status`;
     });
   }
 
-  private async event(tx:TransactionSQL,customerId:number,at:string,kind:string) {
-    await tx`INSERT INTO usage_events(customer_id,detected_at,kind) VALUES (${customerId},${at},${kind})`;
+  private async event(tx:TransactionSQL,customerId:string,at:string,kind:string) {
+    await tx`INSERT INTO usage_events(id,customer_id,detected_at,kind) VALUES (${uuidv7()},${customerId},${at},${kind})`;
   }
-  private async addDay(tx:TransactionSQL,id:number,day:string,down:number,up:number,samples:number,resets:number,gaps:number,estimated:number) {
-    await tx`INSERT INTO usage_daily(customer_id,day,download_bytes,upload_bytes,samples,resets,gaps,estimated_bytes) VALUES (${id},${day},${down},${up},${samples},${resets},${gaps},${estimated}) ON CONFLICT(customer_id,day) DO UPDATE SET download_bytes=usage_daily.download_bytes+excluded.download_bytes,upload_bytes=usage_daily.upload_bytes+excluded.upload_bytes,samples=usage_daily.samples+excluded.samples,resets=usage_daily.resets+excluded.resets,gaps=usage_daily.gaps+excluded.gaps,estimated_bytes=usage_daily.estimated_bytes+excluded.estimated_bytes`;
+  private async addDay(tx:TransactionSQL,id:string,day:string,down:number,up:number,samples:number,resets:number,gaps:number,estimated:number) {
+    await tx`INSERT INTO usage_daily(id,customer_id,day,download_bytes,upload_bytes,samples,resets,gaps,estimated_bytes) VALUES (${uuidv7()},${id},${day},${down},${up},${samples},${resets},${gaps},${estimated}) ON CONFLICT(customer_id,day) DO UPDATE SET download_bytes=usage_daily.download_bytes+excluded.download_bytes,upload_bytes=usage_daily.upload_bytes+excluded.upload_bytes,samples=usage_daily.samples+excluded.samples,resets=usage_daily.resets+excluded.resets,gaps=usage_daily.gaps+excluded.gaps,estimated_bytes=usage_daily.estimated_bytes+excluded.estimated_bytes`;
   }
 
-  async history(id:number|null,month?:string,token?:string) {
+  async history(id:string|null,month?:string,token?:string) {
     month=month||usageDay(Date.now()).slice(0,7);
     if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))throw new BadRequestException('Mes inválido: usa AAAA-MM.');
     if(token!==undefined && !/^[a-zA-Z0-9_-]{43}$/.test(token))throw new BadRequestException('Token inválido o departamento no encontrado.');

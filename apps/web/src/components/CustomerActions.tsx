@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type SubmitEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { FormError } from '@/components/panel-shell';
 import { closeCustomerAction, getCustomerAction, getServerCustomerAction, openCustomerAction, showCustomerToken, subscribeCustomerActions, type CustomerActionContext, type CustomerActionState } from '@/lib/customer-actions-store';
 import { usageMarkup, mountUsage } from '@/scripts/usage.js';
 
@@ -50,16 +51,19 @@ function ActionContent({ state }: { state: CustomerActionState }) {
     finally { sending.current = false; setPending(false); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !sending.current) closeCustomerAction(); }}>
-    <DialogContent className={kind === 'usage-history' ? 'sm:max-w-3xl' : undefined} showCloseButton={!pending} onEscapeKeyDown={event => { if (sending.current) event.preventDefault(); }} onPointerDownOutside={event => { if (sending.current) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); if (!getCustomerAction()) state.trigger?.focus(); }}>
-      <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+    <DialogContent className={`flex max-h-[90dvh] flex-col gap-0 overflow-hidden overflow-y-hidden p-0${kind === 'usage-history' ? ' sm:max-w-3xl' : ''}`} showCloseButton={!pending} onEscapeKeyDown={event => { if (sending.current) event.preventDefault(); }} onPointerDownOutside={event => { if (sending.current) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); if (!getCustomerAction()) state.trigger?.focus(); }}>
+      <DialogHeader className="shrink-0 px-6 pt-6"><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+      <DialogBody>
       {link && <div className="grid gap-3"><label htmlFor="customer-portal-token" className="text-sm font-medium">Enlace privado</label><Input id="customer-portal-token" data-portal-link readOnly value={link} onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()} /><Button asChild variant="outline"><a href={link} target="_blank" rel="noreferrer">Abrir portal</a></Button></div>}
       {kind === 'usage-history' && context && <Usage context={context} />}
       {kind === 'portal-link' && context && <div className="grid gap-4"><p className="text-sm text-muted-foreground">Emitido: {customer!.access_issued_at || '—'} · Vence: {customer!.access_expires_at || 'sin caducidad'} · v{customer!.access_version || 1}</p><div className="flex flex-wrap gap-2"><Button onClick={() => openCustomerAction({ ...context, kind: 'rotate-portal-link' })}>Generar y entregar enlace</Button><Button variant="outline" onClick={() => openCustomerAction({ ...context, kind: 'change-holder' })}>Cambio de titular</Button></div></div>}
-      {readOnly ? <DialogFooter><Button variant="outline" onClick={closeCustomerAction}>Cerrar</Button></DialogFooter> : <form id="customer-action-form" onSubmit={submit} aria-busy={pending} className="grid gap-4">
+      {!readOnly && <form id="customer-action-form" onSubmit={submit} aria-busy={pending} className="grid gap-4">
         {kind === 'set-ip' && <div className="grid gap-2"><label htmlFor="action-ip" className="text-sm font-medium">IP privada</label><Input id="action-ip" name="ip" defaultValue={customer!.ip || ''} disabled={pending} /></div>}
         {kind === 'change-holder' && <><div className="grid gap-2"><label htmlFor="action-holder" className="text-sm font-medium">Nuevo titular</label><Input id="action-holder" name="name" maxLength={160} required disabled={pending} /></div><div className="grid gap-2"><label htmlFor="action-phone" className="text-sm font-medium">Teléfono (opcional)</label><Input id="action-phone" name="phone" maxLength={80} disabled={pending} /></div></>}
-        <p role="alert" className="text-sm text-destructive">{error}</p><DialogFooter><Button type="button" variant="outline" disabled={pending} onClick={closeCustomerAction}>Cancelar</Button><Button type="submit" disabled={pending}>{pending ? 'Guardando…' : submitLabel}</Button></DialogFooter>
+        <FormError message={error} />
       </form>}
+      </DialogBody>
+      {readOnly ? <DialogFooter className="shrink-0 border-t px-6 py-4"><Button variant="outline" onClick={closeCustomerAction}>Cerrar</Button></DialogFooter> : <DialogFooter className="shrink-0 border-t px-6 py-4"><Button type="button" variant="outline" disabled={pending} onClick={closeCustomerAction}>Cancelar</Button><Button type="submit" form="customer-action-form" disabled={pending}>{pending ? 'Guardando…' : submitLabel}</Button></DialogFooter>}
     </DialogContent>
   </Dialog>;
 }

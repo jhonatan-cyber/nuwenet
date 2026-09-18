@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { uuidv7 } from '../common/uuid';
 import { spawn } from 'node:child_process';
 import { DatabaseService } from '../database/database.service';
 import { backupPolicy, maintainBackups } from './backup-policy';
@@ -105,7 +106,7 @@ export class BackupService {
       }
       writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify(manifest, null, 2));
       try { await verifyBackup(directory); } catch (error) { renameSync(path.join(directory, 'manifest.json'), path.join(directory, 'manifest.invalid.json')); throw error; }
-      await this.db.write(tx => tx`INSERT INTO events(message,actor) VALUES (${'Respaldo verificado: ' + name},'Sistema')`);
+      await this.db.write(tx => tx`INSERT INTO events(id,message,actor) VALUES (${uuidv7()},${'Respaldo verificado: ' + name},'Sistema')`);
       let maintenance;
       try { maintenance = await maintainBackups(backupRoot(), name, verifyBackup); } catch (error) { throw new BadRequestException((error as Error).message); }
       return { name, verified: true, encrypted, ...maintenance };

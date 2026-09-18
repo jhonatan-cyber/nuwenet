@@ -39,10 +39,7 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
-      className={cn(
-        "shadcn-root fixed inset-0 z-50 bg-black/50    ",
-        className
-      )}
+      className={cn("fixed inset-0 z-50 bg-black/50", className)}
       {...props}
     />
   )
@@ -62,7 +59,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "shadcn-root text-foreground max-h-[90dvh] overflow-y-auto fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none       sm:max-w-lg",
+          "max-h-[90dvh] overflow-y-auto fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 text-foreground shadow-lg duration-200 outline-none sm:max-w-lg",
           className
         )}
         {...props}
@@ -87,6 +84,23 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-header"
       className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      {...props}
+    />
+  )
+}
+
+/**
+ * Patrón de modal con header/footer fijos: el contenido usa
+ * `flex max-h-[90dvh] flex-col gap-0 overflow-hidden overflow-y-hidden p-0`,
+ * el header `shrink-0 px-6 pt-6`, el cuerpo `DialogBody` (única zona con
+ * scroll) y el footer `shrink-0 border-t px-6 py-4`. Los botones de envío
+ * fuera del <form> usan el atributo `form`.
+ */
+function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-body"
+      className={cn("grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-4", className)}
       {...props}
     />
   )
@@ -147,6 +161,7 @@ function DialogDescription({
 
 export {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
