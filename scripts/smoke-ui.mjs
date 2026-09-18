@@ -42,6 +42,24 @@ try {
     });
     assert.equal(response.status(), 403, 'El setup protegido rechaza el código ausente o incorrecto');
   }
+  // El selector de tema de la pantalla de acceso comparte preferencias con el panel.
+  await page.locator('#auth-theme-button').click();
+  await page.locator('#auth-theme-menu [role="menuitemradio"]').first().waitFor();
+  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('role')),'menuitemradio','El selector de tema abre con el foco dentro');
+  await page.locator('#auth-theme-menu [data-theme-value="dark"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'dark','El tema elegido en la pantalla de acceso se aplica');
+  assert.equal(await page.locator('#auth-theme-menu').isHidden(),true,'Elegir un tema cierra el selector');
+  assert.equal(await page.locator('#auth-theme-button').getAttribute('aria-expanded'),'false');
+  await page.locator('#auth-theme-button').click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#auth-theme-menu').isHidden(),true,'Escape cierra el selector de tema');
+  assert.equal(await page.locator('#auth-theme-button').evaluate(el=>el===document.activeElement),true,'Escape devuelve el foco al botón');
+  await page.locator('#auth-theme-button').click();
+  await page.getByLabel('Usuario', {exact:true}).click();
+  assert.equal(await page.locator('#auth-theme-menu').isHidden(),true,'Un clic fuera cierra el selector de tema');
+  await page.locator('#auth-theme-button').click();
+  await page.locator('#auth-theme-menu [data-theme-value="light"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
   await page.getByLabel('Usuario', {exact:true}).fill('admin');
   await page.getByLabel('Contraseña', {exact:true}).fill('fixture-password');
   await page.getByLabel('Código de instalación', {exact:true}).waitFor({state:'visible'});

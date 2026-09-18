@@ -1,9 +1,13 @@
-import { setTheme, syncThemeControls } from './account.js';
+import { getSnapshot, setTheme, syncThemeControls } from './account.js';
 import { emptyMarkup, escape } from '../lib/html.js';
 
 const $ = selector => document.querySelector(selector);
 const svg = inner => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 const fieldClass = 'h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50';
+// La pantalla de acceso se vuelve a renderizar cuando una sesión expira (401), así que los
+// manejadores globales del selector de tema se atan a un control por render: sin eso se
+// acumulan sobre botones y menús ya desechados.
+let themeListeners;
 
 /** Login and first-run screen. Owns #view while no session is open. */
 export async function renderAuthScreen({ request, onAuthenticated }) {
@@ -32,10 +36,41 @@ export async function renderAuthScreen({ request, onAuthenticated }) {
         <button id="auth-go" class="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 [&_svg]:size-4" type="submit" ${setupBlocked?'disabled':''}><span data-spinner class="hidden size-4 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true"></span><span data-label>${setup?'Crear y entrar':'Entrar'}</span>${svg('<path d="M5 12h14m-5-5 5 5-5 5"/>')}</button>
       </form>
       <p class="my-4 text-center text-xs text-muted-foreground">${setup?'Tú eliges el usuario y la contraseña de esta cuenta.':'¿Necesitas acceso? Contacta al administrador del sistema.'}</p>
-      <div class="grid gap-4 border-t pt-5 text-center"><fieldset class="flex justify-center gap-1"><legend class="mb-2 text-xs text-muted-foreground">Apariencia</legend>${[['light','Claro'],['dark','Oscuro'],['system','Sistema']].map(([value,label])=>`<label class="relative cursor-pointer"><input class="peer sr-only" type="radio" name="theme-choice" value="${value}"><span class="block rounded-md px-3 py-1.5 text-xs peer-checked:bg-muted peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring">${label}</span></label>`).join('')}</fieldset><span class="text-xs text-muted-foreground">NuweNet · Gestión de internet</span></div>
+      <div class="grid gap-4 border-t pt-5 text-center"><div class="relative flex justify-center"><button id="auth-theme-button" class="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-muted" type="button" aria-label="Selector de tema" aria-haspopup="menu" aria-expanded="false" aria-controls="auth-theme-menu"><span data-theme-icon aria-hidden="true"></span></button><div id="auth-theme-menu" class="absolute bottom-[calc(100%+8px)] z-50 hidden w-44 rounded-md border bg-card p-1 shadow-xl" role="menu" aria-label="Selector de tema"></div></div><span class="text-xs text-muted-foreground">NuweNet · Gestión de internet</span></div>
     </section>
   </div>`;
-  document.querySelectorAll('#view input[name="theme-choice"]').forEach(radio => radio.addEventListener('change', () => setTheme(radio.value)));
+  const themeIcons = {
+    light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+    dark: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    system: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  };
+  const themeLabels = { light: 'Claro', dark: 'Oscuro', system: 'Sistema' };
+  const themeButton = $('#auth-theme-button'), themeMenu = $('#auth-theme-menu'), themeIcon = themeButton.querySelector('[data-theme-icon]');
+  const paintTheme = () => {
+    const current = getSnapshot().preferences.theme;
+    themeIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${themeIcons[current]}</svg>`;
+    themeButton.setAttribute('aria-label', `Tema actual: ${themeLabels[current]}. Abrir selector de tema`);
+    themeMenu.innerHTML = Object.entries(themeLabels).map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${value === current}" data-theme-value="${value}" class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${themeIcons[value]}</svg>${label}${value === current ? '<span class="ml-auto" aria-hidden="true">✓</span>' : ''}</button>`).join('');
+  };
+  const setMenu = open => {
+    themeMenu.classList.toggle('hidden', !open);
+    themeButton.setAttribute('aria-expanded', String(open));
+    if (open) themeMenu.querySelector('[role="menuitemradio"]')?.focus();
+  };
+  paintTheme();
+  themeButton.addEventListener('click', () => setMenu(themeMenu.classList.contains('hidden')));
+  themeMenu.addEventListener('click', event => {
+    const item = event.target.closest('[data-theme-value]');
+    if (!item) return;
+    setTheme(item.dataset.themeValue); paintTheme(); setMenu(false); themeButton.focus();
+  });
+  themeListeners?.abort();
+  themeListeners = new AbortController();
+  const { signal } = themeListeners;
+  document.addEventListener('click', event => { if (!event.target.closest('#auth-theme-button,#auth-theme-menu')) setMenu(false); }, { signal });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !themeMenu.classList.contains('hidden')) { setMenu(false); themeButton.focus(); }
+  }, { signal });
   syncThemeControls();
   $('#auth-show-password').onclick = () => {
     const input = $('#auth-pass'), show = input.type === 'password';

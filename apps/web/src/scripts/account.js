@@ -1,4 +1,4 @@
-import { applyTheme, setTheme, openAccount, closeAccount } from '../lib/account-store';
+import { applyTheme, setTheme, openAccount, closeAccount, getSnapshot } from '../lib/account-store';
 const trigger = document.querySelector('#account-trigger');
 const menu = document.querySelector('#account-dropdown');
 const sidebar = document.querySelector('#main-sidebar');
@@ -7,7 +7,7 @@ const backdrop = document.querySelector('#sidebar-backdrop');
 let user = null;
 const initial = value => Array.from(value || 'A')[0].toUpperCase();
 export function syncThemeControls() { applyTheme(); }
-export { setTheme };
+export { setTheme, getSnapshot };
 applyTheme();
 
 function closeMenu(focus=false) { menu.hidden=true;trigger.setAttribute('aria-expanded','false');if(focus)trigger.focus(); }
