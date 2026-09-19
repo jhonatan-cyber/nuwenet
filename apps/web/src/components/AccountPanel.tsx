@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { DialogBody } from '@/components/ui/dialog';
 import { FormError } from '@/components/panel-shell';
-import { subscribe, getSnapshot, getServerSnapshot, closeAccount, setTheme, updatePreferences } from '@/lib/account-store';
+import { DialogHead, FormField, PendingDialog } from '@/components/shared/dialog';
+import { subscribe, getSnapshot, getServerSnapshot, closeAccount, setTheme, updatePreferences } from '@/features/auth/account-store';
 
 function PasswordForm() {
   const [error, setError] = useState('');
@@ -22,8 +23,8 @@ function PasswordForm() {
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo cambiar la contraseña.'); setPending(false); }
   }
   return <form onSubmit={submit} className="grid gap-4" aria-busy={pending}>
-    <div className="grid gap-2"><label htmlFor="current-password" className="text-sm font-medium">Contraseña actual</label><Input id="current-password" name="current_password" type="password" autoComplete="current-password" required disabled={pending} /></div>
-    <div className="grid gap-2"><label htmlFor="new-password" className="text-sm font-medium">Nueva contraseña</label><Input id="new-password" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={256} required disabled={pending} /></div>
+    <FormField id="current-password" label="Contraseña actual"><Input id="current-password" name="current_password" type="password" autoComplete="current-password" required disabled={pending} /></FormField>
+    <FormField id="new-password" label="Nueva contraseña"><Input id="new-password" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={256} required disabled={pending} /></FormField>
     <FormError message={error} />
     <Button type="submit" disabled={pending}>{pending ? 'Guardando…' : 'Cambiar y cerrar sesiones'}</Button>
   </form>;
@@ -31,9 +32,9 @@ function PasswordForm() {
 export default function AccountPanel() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const settings = state.page === 'settings';
-  return <Dialog open={state.open} onOpenChange={open => { if (!open) closeAccount(); }}>
-    <DialogContent id="account-dialog" className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden overflow-y-hidden p-0" onCloseAutoFocus={event => {event.preventDefault();document.querySelector<HTMLButtonElement>('#account-trigger')?.focus();}}>
-      <DialogHeader className="shrink-0 px-6 pt-6"><DialogTitle>{settings ? 'Configuraciones' : 'Perfil'}</DialogTitle><DialogDescription>{settings ? 'Personaliza cómo se muestra tu panel.' : 'Administra tu cuenta y contraseña.'}</DialogDescription></DialogHeader>
+  return <PendingDialog open={state.open} busy={false} id="account-dialog" onClose={closeAccount}
+    restoreFocus={() => { document.querySelector<HTMLButtonElement>('#account-trigger')?.focus(); }}>
+      <DialogHead title={settings ? 'Configuraciones' : 'Perfil'} description={settings ? 'Personaliza cómo se muestra tu panel.' : 'Administra tu cuenta y contraseña.'} />
       {settings ? <DialogBody>
         <fieldset className="grid gap-3"><legend className="mb-3 text-sm font-medium">Tema</legend><div className="grid grid-cols-3 gap-2">
           {([{value:'light',label:'Claro',Icon:Sun},{value:'dark',label:'Oscuro',Icon:Moon},{value:'system',label:'Sistema',Icon:Monitor}] as const).map(({value,label,Icon}) =>
@@ -48,6 +49,5 @@ export default function AccountPanel() {
         <Card><CardContent className="grid gap-1"><p className="font-medium break-all">{state.user?.username}</p><p className="text-sm text-muted-foreground">{state.user?.role === 'superadmin' ? 'Super-admin (dueño del sistema)' : 'Administrador de edificio'}</p></CardContent></Card>
         <PasswordForm key={String(state.open)} />
       </DialogBody>}
-    </DialogContent>
-  </Dialog>;
+    </PendingDialog>;
 }

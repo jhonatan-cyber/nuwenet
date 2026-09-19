@@ -7,7 +7,7 @@ export class OpenWrtAdapter implements RouterAdapter {
   readonly description = {
     id: 'openwrt-ubus' as const,
     name: 'OpenWrt · ubus JSON-RPC',
-    requirements: 'Endpoint /ubus con sesión login y permisos para system.board, system.info y network.interface.dump. Solo consulta: identificación, versión, tiempo activo e interfaces. Probado con respuestas simuladas; pendiente validación en equipo físico.',
+    requirements: 'Endpoint /ubus con sesión login y permisos para system.board, system.info y network.interface.dump. Solo consulta: identificación, versión, tiempo activo e interfaces. Pendiente validación en equipo físico.',
     capabilities: { ...readCapabilities },
   };
 

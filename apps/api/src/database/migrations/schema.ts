@@ -31,7 +31,7 @@ export const schemaMigrations: Migration[] = [
         `CREATE TABLE IF NOT EXISTS customers(id ${id}, apartment TEXT NOT NULL UNIQUE, name TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', plan_id UUID REFERENCES plans(id), status TEXT NOT NULL DEFAULT 'active')`,
         `CREATE TABLE IF NOT EXISTS invoices(id ${id}, customer_id UUID NOT NULL REFERENCES customers(id), period TEXT NOT NULL, due TEXT NOT NULL, amount INTEGER NOT NULL, paid_at TEXT, UNIQUE(customer_id,period))`,
         `CREATE TABLE IF NOT EXISTS events(id ${id}, created_at TEXT NOT NULL DEFAULT ${timestamp}, message TEXT NOT NULL)`,
-        `CREATE TABLE IF NOT EXISTS commands(id ${id}, customer_id UUID NOT NULL REFERENCES customers(id), action TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT ${timestamp}, mode TEXT NOT NULL DEFAULT 'simulated')`,
+        `CREATE TABLE IF NOT EXISTS commands(id ${id}, customer_id UUID NOT NULL REFERENCES customers(id), action TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT ${timestamp}, mode TEXT NOT NULL DEFAULT 'mikrotik-failed')`,
         'CREATE INDEX IF NOT EXISTS invoices_customer_due ON invoices(customer_id, due)',
       ];
       for (const statement of statements) await tx.unsafe(statement);
@@ -92,9 +92,9 @@ export const schemaMigrations: Migration[] = [
         'CREATE TABLE login_attempts (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, resets_at TEXT NOT NULL)',
         'ALTER TABLE customers ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
         'ALTER TABLE customers ADD COLUMN manual_hold INTEGER NOT NULL DEFAULT 0',
-        "ALTER TABLE customers ADD COLUMN network_state TEXT NOT NULL DEFAULT 'simulated'",
+        "ALTER TABLE customers ADD COLUMN network_state TEXT NOT NULL DEFAULT 'failed'",
         'ALTER TABLE customers ADD COLUMN network_checked_at TEXT',
-        "ALTER TABLE commands ADD COLUMN status TEXT NOT NULL DEFAULT 'simulated'",
+        "ALTER TABLE commands ADD COLUMN status TEXT NOT NULL DEFAULT 'failed'",
         'ALTER TABLE commands ADD COLUMN payload TEXT',
         'ALTER TABLE commands ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0',
         'ALTER TABLE commands ADD COLUMN next_attempt TEXT',
@@ -122,7 +122,7 @@ export const schemaMigrations: Migration[] = [
       await tx`INSERT INTO payments(id,invoice_id,amount,created_at,method,reference)
         SELECT ${uuidv7()},i.id,i.amount,i.paid_at,'legacy','Saldo histórico migrado' FROM invoices i
         WHERE i.paid_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id)`;
-      await tx`UPDATE commands SET status=CASE WHEN mode='mikrotik' THEN 'applied' WHEN mode='mikrotik-failed' THEN 'legacy_failed' ELSE 'simulated' END`;
+      await tx`UPDATE commands SET status=CASE WHEN mode='mikrotik' THEN 'applied' WHEN mode='mikrotik-failed' THEN 'legacy_failed' ELSE 'failed' END`;
     },
   },
   {
@@ -177,7 +177,7 @@ export const schemaMigrations: Migration[] = [
         if (Number.isInteger(globalCentral)) {
           await tx`UPDATE buildings SET central_router_id=${globalCentral} WHERE central_router_id IS NULL`;
         }
-      } catch { /* sin central global: los edificios quedan simulados */ }
+      } catch { /* sin central global: queda pendiente asignar el central de cada edificio */ }
     },
   },
   {
@@ -395,6 +395,24 @@ export const schemaMigrations: Migration[] = [
         revision INTEGER NOT NULL DEFAULT 1, design TEXT NOT NULL,
         published_design TEXT, published_at TEXT, updated_at TEXT NOT NULL
       )`);
+    },
+  },
+  {
+    version: 29,
+    name: 'Activar, desactivar y eliminar planes',
+    up: async (_db, tx) => {
+      await safeAlter(tx, `ALTER TABLE plans ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`);
+    },
+  },
+  {
+    version: 30,
+    name: 'Equipo central obligatorio',
+    up: async (_db, tx) => {
+      await tx.unsafe(`ALTER TABLE customers ALTER COLUMN network_state SET DEFAULT 'failed'`);
+      await tx.unsafe(`ALTER TABLE commands ALTER COLUMN status SET DEFAULT 'failed'`);
+      await tx.unsafe(`ALTER TABLE commands ALTER COLUMN mode SET DEFAULT 'mikrotik-failed'`);
+      await tx`UPDATE customers SET network_state='failed' WHERE network_state='simulated'`;
+      await tx`UPDATE commands SET status='failed',mode='mikrotik-failed',last_error=COALESCE(last_error,'El edificio no tiene equipo central asignado. Asigna un MikroTik central y reintenta la orden.') WHERE status='simulated' OR mode='simulated'`;
     },
   },
 ];

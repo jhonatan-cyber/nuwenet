@@ -3,18 +3,15 @@ import { RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableCell, TableRow } from '@/components/ui/table';
 import { PanelShell } from '@/components/panel-shell';
-import { getOverview, getServerOverview, subscribeOverview, type OverviewContext } from '@/lib/overview-store';
+import { DataTable } from '@/components/shared/table';
+import { getOverview, getServerOverview, subscribeOverview, type OverviewContext } from '@/features/overview/overview-store';
 import { overviewView } from '@/lib/pages';
 
-const networkLabels: Record<string, string> = { simulated: 'Simulado', pending: 'Pendiente', running: 'Aplicando', applied: 'Aplicado', failed: 'Fallido', legacy_failed: 'Fallo histórico' };
+const networkLabels: Record<string, string> = { pending: 'Pendiente', running: 'Aplicando', applied: 'Aplicado', failed: 'Fallido', legacy_failed: 'Fallo histórico' };
 const taskNames: Record<string, string> = { usage: 'Consumo', linked: 'Vinculación', network: 'Red', overdue: 'Vencimientos', billing: 'Facturación', backups: 'Respaldos', sessions: 'Sesiones' };
 const taskLabel = (name: string) => taskNames[name] || (String(name).startsWith('router:') ? `Router ${String(name).slice(7)}` : name);
-
-function EmptyRow({ columns }: { columns: number }) {
-  return <TableRow><TableCell colSpan={columns} className="p-4 text-muted-foreground">No hay registros.</TableCell></TableRow>;
-}
 
 function StatusBadge({ status }: { status: string }) {
   return <Badge variant={status === 'failed' ? 'outline-destructive' : 'outline'}>{networkLabels[status] || status}</Badge>;
@@ -39,9 +36,6 @@ function OverviewView({ context, notice }: { context: OverviewContext; notice: s
 
 function NetworkView({ context, notice, setNotice }: { context: OverviewContext; notice: string; setNotice: (value: string) => void }) {
   const [retrying, setRetrying] = useState<string | null>(null);
-  async function refresh() {
-    try { await context.refresh(); } catch (err) { setNotice(err instanceof Error ? err.message : 'No se pudo actualizar el listado.'); }
-  }
   async function retry(id: string) {
     if (retrying !== null) return;
     setRetrying(id); setNotice('');
@@ -49,22 +43,18 @@ function NetworkView({ context, notice, setNotice }: { context: OverviewContext;
     catch (err) { setNotice(err instanceof Error ? err.message : 'No se pudo reintentar la orden.'); }
     finally { setRetrying(null); }
   }
-  return <PanelShell id="network-panel" tone="destructive" title="Control de acceso" description="Órdenes persistentes con reintento automático. Una orden fallida permanece visible." notice={notice}
-    actions={<Button type="button" variant="outline" onClick={() => { void refresh(); }}>Actualizar</Button>}>
-    <Card><CardContent className="p-0">
-      <Table>
-        <TableHeader><TableRow>{['Departamento', 'Orden', 'Resultado', 'Intentos', 'Próximo intento', 'Acción'].map(heading => <TableHead key={heading}>{heading}</TableHead>)}</TableRow></TableHeader>
-        <TableBody>{context.commands.map(command => <TableRow key={command.id}>
+  return <PanelShell id="network-panel" tone="destructive" title="Control de acceso" description="Órdenes persistentes con reintento automático. Una orden fallida permanece visible." notice={notice}>
+    <DataTable
+      headings={['Departamento', 'Orden', 'Resultado', 'Intentos', 'Próximo intento', 'Acción']}
+      empty="Sin órdenes de acceso pendientes."
+      rows={context.commands.map(command => <TableRow key={command.id}>
           <TableCell>{command.apartment}</TableCell>
           <TableCell>{command.action === 'activate' ? 'Activar' : 'Suspender'}</TableCell>
           <TableCell><StatusBadge status={command.status} />{command.last_error && <small className="mt-1 block text-muted-foreground">{command.last_error}</small>}</TableCell>
           <TableCell>{command.attempts}</TableCell>
           <TableCell>{['failed', 'pending'].includes(command.status) ? context.date(command.next_attempt || '') : '—'}</TableCell>
           <TableCell>{command.status === 'failed' && context.superadmin ? <Button type="button" variant="outline" size="icon-sm" title="Reintentar" aria-label={`Reintentar orden de ${command.apartment}`} disabled={retrying !== null} onClick={() => { void retry(command.id); }}><RotateCcw aria-hidden="true" /></Button> : null}</TableCell>
-        </TableRow>)}</TableBody>
-      </Table>
-      {!context.commands.length && <p className="p-4 text-sm text-muted-foreground">No hay registros.</p>}
-    </CardContent></Card>
+        </TableRow>)} />
   </PanelShell>;
 }
 
@@ -75,15 +65,16 @@ function ActivityView({ context, notice }: { context: OverviewContext; notice: s
   return <PanelShell id="activity-panel" title="Actividad" description="Últimos 40 movimientos." notice={notice}>
     <Card><CardContent className="grid gap-4">
       <div><h2 className="text-lg font-semibold">Tareas automáticas</h2><p className="text-sm text-muted-foreground">Cola de red: {queue.pending} pendientes, {queue.failed} fallidas{oldest}.</p></div>
-      <Table>
-        <TableHeader><TableRow>{['Tarea', 'Último éxito', 'Duración', 'Último error'].map(heading => <TableHead key={heading}>{heading}</TableHead>)}</TableRow></TableHeader>
-        <TableBody>{tasks.map(task => <TableRow key={task.name}>
+      <DataTable
+        variant="plain"
+        headings={['Tarea', 'Último éxito', 'Duración', 'Último error']}
+        empty="Sin tareas automáticas ejecutadas."
+        rows={tasks.map(task => <TableRow key={task.name}>
           <TableCell>{taskLabel(task.name)}</TableCell>
           <TableCell>{task.last_success ? context.date(task.last_success) : '—'}</TableCell>
           <TableCell>{task.duration_ms != null ? `${task.duration_ms} ms` : '—'}</TableCell>
           <TableCell>{task.last_error || '—'}</TableCell>
-        </TableRow>)}{!tasks.length && <EmptyRow columns={4} />}</TableBody>
-      </Table>
+        </TableRow>)} />
     </CardContent></Card>
     <Card><CardContent className="grid gap-2">
       <h2 className="text-lg font-semibold">Movimientos</h2>

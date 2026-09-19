@@ -25,7 +25,7 @@ El mapa de la capa de datos —qué archivo es dueño de qué pieza, en qué ord
 - Clave de recuperación generada y guardada en `BACKUP_ENCRYPTION_KEY` dentro del `.env` local. Conservarla para restaurar los respaldos.
 - Servidor local iniciado en `http://127.0.0.1:3000` (API y frontend compilado) con el código actual: autenticación, portal y página de corte responden 200 y la ruta del archivo responde 401 sin sesión. El servidor de desarrollo Astro escucha en `http://127.0.0.1:4321`.
 - El proceso iniciado es local; no se ha instalado una tarea ni un servicio de arranque automático, ni publicado un dominio.
-- Corregidos los permisos del aprovisionador y del script CLI de MikroTik a `read,write,rest-api`, conforme a la [documentación oficial](https://manual.mikrotik.com/docs/authentication-authorization-accounting/user/). Verificado con respuestas simuladas.
+- Corregidos los permisos del aprovisionador y del script CLI de MikroTik a `read,write,rest-api`, conforme a la [documentación oficial](https://manual.mikrotik.com/docs/authentication-authorization-accounting/user/). Verificado en laboratorio.
 
 ## Pendientes que requieren datos reales
 

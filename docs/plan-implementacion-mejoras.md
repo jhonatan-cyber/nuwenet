@@ -73,7 +73,7 @@ Archivos de esta entrega B5–B9: `database.service.ts` (migraciones 22–23 + r
 
 **Registro de ejecución — 13/09/2026 (Fase C)**
 
-- [x] C4. El aviso de una orden ya no decide su resultado: si `notify` falla tras aplicarse la regla, la orden conserva `applied`/`simulated` y solo se registra el fallo en stderr. Nueva prueba en `test/tasks.test.js` (el aviso caído no repite la orden).
+- [x] C4. El aviso de una orden ya no decide su resultado: si `notify` falla tras aplicarse la regla, la orden conserva `applied` y solo se registra el fallo en stderr. Nueva prueba en `test/tasks.test.js` (el aviso caído no repite la orden).
 - [x] C1/C2. Cada trabajo del tick (`linked`, `network`, más `usage` y las tareas por intervalo) falla aislado con aviso en log; la exclusión distribuida por `task_locks` y el orden por departamento se conservan.
 - [x] C3. La cola procesa hasta 10 órdenes por pasada con presupuesto de 4 minutos; el timeout REST de 12 s se mantiene.
 - [x] C5/C6. Diagnóstico por tarea en `settings` (`task:<nombre>` con última ejecución, éxito, duración y error), expuesto en `automation.tasks` y rezago de cola en `automation.queue` del estado, conteos en `GET /api/health` y tabla Tareas automáticas en Actividad. Umbrales iniciales en la guía de operación. El contrato anterior del tick (propagar el error) se actualizó en `test/usage.test.js`.

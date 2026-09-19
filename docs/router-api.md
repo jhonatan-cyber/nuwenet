@@ -7,8 +7,8 @@ El módulo NestJS `RoutersModule` separa la API del protocolo de cada equipo. Lo
 | Adaptador | Protocolo | Funciones implementadas | Validación |
 | --- | --- | --- | --- |
 | `arris-touchstone` | Sesión web con Playwright | Modelo, firmware, hardware, serie, WAN/LAN, Wi-Fi 2,4/5 GHz y clientes con IPv4/IPv6 desde la IP de administración. Diagnóstico DOCSIS adicional opcional | Equipo TG2492LG-NA, firmware 9.1.103HB; consulta real de 5 clientes únicos |
-| `mikrotik-rest` | RouterOS REST con autenticación Basic | Identificación, versión, tiempo activo, interfaces, puertos ethernet (habilitar/deshabilitar con verificación) | Probado con respuestas simuladas; falta equipo físico. Los switches CRS con RouterOS usan este mismo adaptador; los CSS con SwOS y otros switches sin API quedan como inventario |
-| `openwrt-ubus` | ubus JSON-RPC | Login, identificación, versión, tiempo activo e interfaces | Pruebas con respuestas simuladas; falta equipo físico |
+| `mikrotik-rest` | RouterOS REST con autenticación Basic | Identificación, versión, tiempo activo, interfaces, puertos ethernet (habilitar/deshabilitar con verificación) | Pendiente validación en equipo físico. Los switches CRS con RouterOS usan este mismo adaptador; los CSS con SwOS y otros switches sin API quedan como inventario |
+| `openwrt-ubus` | ubus JSON-RPC | Login, identificación, versión, tiempo activo e interfaces | Pendiente validación en equipo físico |
 | `tr369-usp` | USP / TR-369 (base, sin modelo validado) | Ninguna: punto de extensión por modelo. No participa en la detección automática | Requiere agente USP habilitado en el equipo; validar por modelo/firmware antes de anunciar soporte |
 
 La compatibilidad depende del modelo, firmware, servicios habilitados y permisos. No hay una API universal que convierta cualquier router en un equipo administrable. Un adaptador web ARRIS puede necesitar ajustes cuando cambia su firmware. Un firewall disponible en el panel del equipo no implica que este adaptador implemente su modificación.
@@ -24,7 +24,7 @@ En **Controlar dispositivo** se puede bloquear TCP/UDP IPv4 de una IP, quitar es
 - `parental_control`: `schedule` admite `22h-7h,mon,tue` u `off`. Los cruces de medianoche se separan y desplazan al día siguiente. La hora corresponde al reloj del router. Quitar un horario conserva el bloqueo manual.
 - `speed_limit`: no disponible por dispositivo en este firmware; continúa deshabilitado. Los controles globales de LAN encontrados en las definiciones del firmware no se usan como límites individuales.
 
-Se conservan las reglas externas y las de otras funciones. Un error de escritura puede dejar cambios parciales y se informa como fallo; la lectura de reglas permite revisar el resultado antes de reintentar. Validación: formularios y funciones de escritura inspeccionados en el equipo real, pruebas de operaciones con un controlador simulado. No se aplicaron filtros reales durante el desarrollo para comprobar cortes de tráfico.
+Se conservan las reglas externas y las de otras funciones. Un error de escritura puede dejar cambios parciales y se informa como fallo; la lectura de reglas permite revisar el resultado antes de reintentar. Validación: formularios y funciones de escritura inspeccionados en el equipo real. No se aplicaron filtros reales durante el desarrollo para comprobar cortes de tráfico.
 
 ## Endpoints
 
@@ -89,12 +89,12 @@ Las operaciones de negocio exigen sesión incluso antes de crear el primer usuar
 
 1. **Alta:** crea el plan, registra el depto con su IP privada (lease estático del MikroTik). Al guardar con IP se aplica la velocidad del plan.
 2. **Cobro:** genera mensualidades, registra el pago completo. Si no quedan cuotas vencidas, el depto se reactiva solo en el MikroTik.
-3. **Mora:** pulsa Revisar vencimientos. Los deptos con cuota vencida se suspenden en el MikroTik; sin IP quedan simulados.
-4. **Puesta en marcha sin consola:** con el equipo accesible por IP y credenciales iniciales, usa **Puesta en marcha inicial** en Equipos de red (o `POST /api/routers/onboard`). Fija identidad, IP de gestión /24 (se suma sin quitar la anterior), DNS, usuario de servicio y HTTPS opcional, y verifica en la nueva IP antes de informar éxito; si algo falla a mitad, dice qué ya quedó aplicado. Después **Aprovisionar puertos y permisos** ajusta servicios. Todo probado con respuestas simuladas; el certificado autofirmado sirve en LAN de gestión y, como NuweNet valida TLS, producción requiere un certificado válido. Irremplazable por software: cablear, encender y que el servidor alcance al equipo.
+3. **Mora:** pulsa Revisar vencimientos. Los deptos con cuota vencida se suspenden en el MikroTik; sin IP la orden queda en fallo hasta asignarla.
+4. **Puesta en marcha sin consola:** con el equipo accesible por IP y credenciales iniciales, usa **Puesta en marcha inicial** en Equipos de red (o `POST /api/routers/onboard`). Fija identidad, IP de gestión /24 (se suma sin quitar la anterior), DNS, usuario de servicio y HTTPS opcional, y verifica en la nueva IP antes de informar éxito; si algo falla a mitad, dice qué ya quedó aplicado. Después **Aprovisionar puertos y permisos** ajusta servicios. El certificado autofirmado sirve en LAN de gestión y, como NuweNet valida TLS, producción requiere un certificado válido. Irremplazable por software: cablear, encender y que el servidor alcance al equipo.
 5. **Red WAN/LAN visual:** la pestaña Red WAN/LAN de Aprovisionar aplica directo por REST (`POST /api/routers/:id/wan` y `POST /api/routers/:id/lan-dhcp`) el bloque WAN (DHCP + NAT) y LAN/DHCP (`lan` en /24, `lanInterface`, `pool`, `dns` y `leases` de switch y departamentos), con verificación de lectura. Valida subred, colisiones con el pool y duplicados antes de aplicarlo; no elimina leases existentes. Los comandos equivalentes quedan como referencia. El direccionamiento recomendado es: WAN del MikroTik por DHCP del proveedor, LAN estática en el central, leases estáticos por MAC para switch y routers de departamento, y DHCP propio en cada router de departamento para sus equipos.
 6. **Verificación:** en Routers, Probar conexión muestra bloqueadas (`nuwenet-suspend-*`), colas (`nuwenet-*`) y leases. La tarjeta manual permite suspender/reactivar una IP suelta.
 5. **Fallo de red:** la orden queda `mikrotik-failed` en Control de acceso con evento explicativo; la base sigue siendo la verdad. Reintenta la acción manual o revisa credenciales/conectividad.
-6. **Rollback a simulado:** quita la IP del depto (`POST /api/customers/ip` sin `ip`) o quita el router de NuweNet (no toca el router). Limpia a mano en WinBox las reglas `nuwenet-suspend-*` y colas `nuwenet-*` si ya no las quieres.
+6. **Limpieza:** quita la IP del depto (`POST /api/customers/ip` sin `ip`) o quita el router de NuweNet (no toca el router). Limpia a mano en WinBox las reglas `nuwenet-suspend-*` y colas `nuwenet-*` si ya no las quieres.
 
 ## Cifrado y navegador
 
@@ -120,9 +120,9 @@ La aplicación mantiene su alcance de administrador local. Antes de exponerla en
 
 ## Equipos centrales y dispositivos por edificio
 
-El central se asigna con `POST /api/buildings/central`, usando `building_id` y `central_router_id` (o `null` para modo simulado). El router debe pertenecer al mismo edificio. `/api/settings` ya no acepta un central global. Antes de ejecutar cada orden se comprueban el edificio del cliente, el router actual y el equipo anterior si hay limpieza pendiente.
+El central se asigna con `POST /api/buildings/central`, usando `building_id` y `central_router_id` obligatorio. El router debe pertenecer al mismo edificio. `/api/settings` ya no acepta un central global. Antes de ejecutar cada orden se comprueban el edificio del cliente, el router actual y el equipo anterior si hay limpieza pendiente.
 
-`GET /api/state?building_id=ID` devuelve `enforcement.state`: `simulated`, `unverified`, `real` o `error`; la vista conjunta también puede devolver `mixed`. Una consulta correcta del router no confirma por sí sola que todas las órdenes se hayan aplicado; el resultado de cada departamento permanece en Control de acceso.
+`GET /api/state?building_id=ID` devuelve `enforcement.state`: `real`, `unverified` o `error`. Una consulta correcta del router no confirma por sí sola que todas las órdenes se hayan aplicado; el resultado de cada departamento permanece en Control de acceso.
 
 `POST /api/routers/:id/devices` recibe `{ "mac": "AA:BB:CC:DD:EE:FF", "customer_id": 123 }`. La MAC debe figurar en la última consulta y el departamento debe estar vigente y pertenecer al mismo edificio. `customer_id: null` retira la asociación. Los administradores pueden gestionar estos vínculos dentro de sus edificios; configurar el hardware sigue reservado al superadministrador.
 

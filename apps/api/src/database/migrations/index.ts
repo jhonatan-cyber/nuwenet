@@ -20,7 +20,7 @@ import { legacyMigrations } from './legacy-tables';
 // el array correspondiente con `version`, `name` y `up`. El array se aplica en su
 // orden, así que se inserta donde corresponda, y `db:status` la muestra sola.
 //
-// Este registro lo usan igual el arranque de la API y `scripts/database.mjs`
+// Este registro lo usan igual el arranque de la API y `tools/db/database.ts`
 // (`bun run db:status` para consultarlo sin efectos, `bun run db:migrate` para
 // aplicarlo): no duplicar listas de versiones en otros sitios.
 

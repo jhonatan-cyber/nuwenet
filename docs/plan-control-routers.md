@@ -1,8 +1,8 @@
 # Plan – Control de routers secundarios vía MikroTik central
 
-> Objetivo: pasar de control simulado a control real centralizado en el MikroTik.
+> Objetivo: control real centralizado en el MikroTik.
 > Topología: `ISP -> Router principal -> MikroTik -> Switch -> Routers secundarios (en modo AP Bridge) -> Departamentos`.
-> Estado inicial: NuweNet solo consulta (`GET /rest/system/resource`, `/rest/interface`). `POST /api/routers/:id/actions` devuelve 422 y `commands` son `mode='simulated'`.
+> Estado inicial: NuweNet solo consulta (`GET /rest/system/resource`, `/rest/interface`). `POST /api/routers/:id/actions` devuelve 422 y `commands` quedan en fallo hasta asignar el central.
 
 ## Cómo usar este archivo para seguimiento
 
@@ -61,7 +61,7 @@ Archivos clave: `apps/api/src/routers/router.types.ts`, `apps/api/src/routers/ad
 - [x] 3.5 Actualizar `capabilities` en `mikrotik.adapter.ts`: `suspend: true, reactivate: true, speed_limit: true, firewall: true, parental_control: true`, actualizar `requirements` y `notes`.
 - [x] 3.6 Cambiar `RoutersService.action()`: llamar al adaptador en vez de lanzar `UnprocessableEntityException`. Registrar en `router_checks` + `events`. Incluye guarda contra IP de departamento (`409`: usar flujo Departamentos) y serialización por router (`acting`/`checking`).
 - [x] 3.7 Extender `RouterActionDto` con `ip` / `down` / `up` / `target` / `schedule` / `remove`. Nota revisión 2026-09-13: `customer_id`/`mac` NO van en el DTO; la resolución depto→IP/MAC vive en `ManagementService` + `customer_devices` / `customer_network_targets`.
-- [x] 3.8 Conectar `ManagementService` con `RoutersService`: `access()` + `queue()` + `processQueue()` encolan órdenes por departamento y las aplican en el central (`suspend/reactivate` + `speed_limit` al activar, o `controlDepartment()` si es agrupado). `commands.mode=mikrotik|simulated`, `mikrotik-failed` + `next_attempt` con backoff si falla; `customers.network_state` refleja el resultado.
+- [x] 3.8 Conectar `ManagementService` con `RoutersService`: `access()` + `queue()` + `processQueue()` encolan órdenes por departamento y las aplican en el central (`suspend/reactivate` + `speed_limit` al activar, o `controlDepartment()` si es agrupado). `commands.mode=mikrotik|mikrotik-failed` + `next_attempt` con backoff si falla; `customers.network_state` refleja el resultado.
 - [x] 3.9 Manejo de errores: credencial inválida, equipo offline, IP no encontrada → `status: error`, `last_error` sin filtrar secretos.
 - [x] 3.10 Añadir tests: mock REST MikroTik para `suspend/reactivate/speed_limit` + caso concurrente. Extender `test/router-adapters.test.js` y `test/router-contract.js`.
 - [x] 3.11 Verificar: `bun run check`, `bun run build`, `bun run test`.
@@ -84,7 +84,7 @@ Archivos (revisión 2026-09-13): `apps/web/src/components/RoutersPanel.tsx`, `Cu
 - [x] 5.2 Prueba de concurrencia: 2 pagos simultáneos no duplican ni dejan estado inconsistente (idempotencia por `request_key`, `acting`/`checking` por router, `task_locks` en `processQueue`, reintento ordenado por `commands.id`).
 - [x] 5.3a Endurecer (código): IPs RFC1918 en `router-network.ts`, sin redirecciones, timeout 12s, tope 1MB, TLS por defecto de `fetch`, `ROUTER_ENCRYPTION_KEY` 32 bytes, credenciales AES-256-GCM nunca expuestas.
 - [ ] 5.3b Endurecer (prod física): HTTPS al MikroTik con cert válido, `ROUTER_ENCRYPTION_KEY` en prod, dump PostgreSQL. Revisión 2026-09-13: la parte de backup en código está hecha (Fase D: paquete AES-256-GCM, custodia/rotación, streaming); queda el entorno físico.
-- [x] 5.4 Definir rollback: cómo volver a modo simulado si falla el MikroTik (quitar IP / quitar central / limpiar `nuwenet-suspend-*` y `nuwenet-*` en WinBox; ver `router-api.md`).
+- [x] 5.4 Definir limpieza: cómo retirar reglas si falla el MikroTik (quitar IP / limpiar `nuwenet-suspend-*` y `nuwenet-*` en WinBox; ver `router-api.md`).
 - [x] 5.5 Actualizar `docs/router-api.md` y `README.md`: capacidades reales, requisitos MikroTik, límites.
 - [x] 5.6 Smoke UI: `bunx playwright install chromium` + `bun run test:ui`. Revisión 2026-09-13 (tarde): verde tras Billing, Operaciones, Routers, Fase C y Fase D; re-ejecutar tras cada cambio (`bun run check`, `bun run test`).
 
@@ -118,8 +118,8 @@ Archivos (revisión 2026-09-13): `apps/web/src/components/RoutersPanel.tsx`, `Cu
 | Fecha | Fase/Ítem | Hecho por | Notas |
 |-------|-----------|-----------|-------|
 | 2026-09-08 | Fase 3 backend manual (3.1-3.6, 3.10-3.11) | opencode | `suspend/reactivate/speed_limit` MikroTik por IP, `check+build+integration+router-adapters` en verde. Falta 3.7-3.8 (IP por depto + auto) y Fases 0-2 físicas. |
-| 2026-09-08 | Fase 3 auto + Fase 4 UI (3.7-3.9, 4.2-4.4) | opencode | Migración 3 (`customers.ip`), `POST /api/customers/ip`, enforcement auto en cambio/pago/vencidos con `commands.mode=mikrotik\|mikrotik-failed\|simulated`, UI IP por depto + acciones manuales en Routers. `check+build+5 tests` en verde. Pendiente: 4.1 (listar bloqueos/colas), 4.5, Fase 5 y Fases 0-2 físicas. |
-| 2026-09-08 | Fase 4 lectura+docs (4.1, 4.5, 5.2, 5.4, 5.5) | opencode | inspect trae bloqueadas/colas/leases a la tarjeta; runbook+rollback en router-api.md; alcance mixto en README. Queda fisico: 0-2, 5.1, 5.3, 5.6. |
+| 2026-09-08 | Fase 3 auto + Fase 4 UI (3.7-3.9, 4.2-4.4) | opencode | Migración 3 (`customers.ip`), `POST /api/customers/ip`, enforcement auto en cambio/pago/vencidos con `commands.mode=mikrotik\|mikrotik-failed`, UI IP por depto + acciones manuales en Routers. `check+build+5 tests` en verde. Pendiente: 4.1 (listar bloqueos/colas), 4.5, Fase 5 y Fases 0-2 físicas. |
+| 2026-09-08 | Fase 4 lectura+docs (4.1, 4.5, 5.2, 5.4, 5.5) | opencode | inspect trae bloqueadas/colas/leases a la tarjeta; runbook+limpieza en router-api.md; alcance real en README. Queda fisico: 0-2, 5.1, 5.3, 5.6. |
 | 2026-09-08 | Fase 6 cierre funcional | opencode | Auth+setup, cron vencidos, abonos parciales, CURRENCY, avisos log, firewall/parental MikroTik, paginacion. check+build+7 tests+smoke UI en verde. |
 | 2026-09-13 | Revisión doc vs código | opencode | Sin cambios de código. Se corrigen 1.3 (`rest-api` no `test`), 2.7/3.2-3.4 (filter `nuwenet-suspend-*`, cola compartida `nuwenet-department-*`), 3.6-3.8 (sin líneas fijas; DTO sin `customer_id/mac`; `queue+processQueue`), Fase 4 (+`operations.js`), 5.3 dividida en 5.3a código `[x]` / 5.3b prod física `[ ]`, Registro movido al final. Pendiente físico: 0, 1, 2, 5.1, 5.3b + re-ejecutar `check/test/test:ui`. |
 | 2026-09-13 | Revisión vespertina + panel shadcn y Fases C/D | opencode | Fase 4 actualizada (`routers.js`/`operations.js` eliminados → `RoutersPanel`/`OperationsPanel`/`BillingPanel`/`CustomerActions`; 4.2 diálogo Cortar/Reactivar; 4.4 avisos en línea); 1.8 suma `BACKUP_ENCRYPTION_KEY`; 5.3b nota Fase D en código; 5.6 verde de hoy. Fases C (diagnóstico por tarea, `test/tasks.test.js`) y D (respaldo cifrado, `test/backup.test.js`) hechas en el otro plan. Pendiente físico: 0, 1, 2, 5.1, 5.3b. |

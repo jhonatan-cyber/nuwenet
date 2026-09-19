@@ -1,0 +1,59 @@
+---
+import '../styles/ui.css';
+import '../styles/application.css';
+import ThemeInit from '../components/ThemeInit.astro';
+import Catalog from '../components/catalog/Catalog';
+---
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" />
+  <title>Catálogo de componentes · NuweNet</title>
+  <ThemeInit />
+</head>
+<body class="min-h-dvh bg-background text-foreground">
+  <header class="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
+    <div class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+      <div class="grid gap-0.5">
+        <h1 class="text-lg font-semibold tracking-tight">Catálogo de componentes</h1>
+        <p class="text-sm text-muted-foreground">Página interna de revisión visual: los componentes compartidos del panel en sus variantes reales.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="catalog-theme" type="button" class="h-9 rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent">Tema: Sistema</button>
+      </div>
+    </div>
+  </header>
+  <main class="mx-auto w-full max-w-6xl px-6 py-8">
+    <Catalog client:load />
+  </main>
+</body>
+</html>
+<script is:inline>
+  // Mismo tema que el panel: se guarda en `nuwenet.panel.preferences` para que
+  // la elección se comparta con la aplicación.
+  (function () {
+    var button = document.getElementById('catalog-theme');
+    var order = ['system', 'light', 'dark'];
+    var labels = { system: 'Sistema', light: 'Claro', dark: 'Oscuro' };
+    function read() {
+      try { return JSON.parse(localStorage.getItem('nuwenet.panel.preferences') || '{}').theme || 'system'; }
+      catch (error) { return 'system'; }
+    }
+    function apply(theme) {
+      var preferences = {};
+      try { preferences = JSON.parse(localStorage.getItem('nuwenet.panel.preferences') || '{}'); } catch (error) { preferences = {}; }
+      preferences.theme = theme;
+      localStorage.setItem('nuwenet.panel.preferences', JSON.stringify(preferences));
+      var dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      button.textContent = 'Tema: ' + labels[theme];
+    }
+    button.addEventListener('click', function () { apply(order[(order.indexOf(read()) + 1) % order.length]); });
+    apply(read());
+  })();
+</script>

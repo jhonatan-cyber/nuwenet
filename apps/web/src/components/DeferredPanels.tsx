@@ -1,11 +1,11 @@
 import { Component, lazy, Suspense, useSyncExternalStore, type ReactNode } from 'react';
-import { getPlans, getServerPlans, subscribePlans } from '@/lib/plans-store';
-import { getCustomers, getServerCustomers, subscribeCustomers } from '@/lib/customers-store';
-import { getBilling, getServerBilling, subscribeBilling } from '@/lib/billing-store';
-import { getOperations, getServerOperations, subscribeOperations } from '@/lib/operations-store';
-import { getRouters, getServerRouters, subscribeRouters } from '@/lib/routers-store';
-import { getCustomerAction, getServerCustomerAction, subscribeCustomerActions } from '@/lib/customer-actions-store';
-import { getOverview, getServerOverview, subscribeOverview } from '@/lib/overview-store';
+import { getPlans, getServerPlans, subscribePlans } from '@/features/plans/plans-store';
+import { getCustomers, getServerCustomers, subscribeCustomers } from '@/features/customers/customers-store';
+import { getBilling, getServerBilling, subscribeBilling } from '@/features/billing/billing-store';
+import { getOperations, getServerOperations, subscribeOperations } from '@/features/operations/operations-store';
+import { getRouters, getServerRouters, subscribeRouters } from '@/features/routers-network/routers-store';
+import { getCustomerAction, getServerCustomerAction, subscribeCustomerActions } from '@/features/customers/customer-actions-store';
+import { getOverview, getServerOverview, subscribeOverview } from '@/features/overview/overview-store';
 import { ListSkeleton } from '@/components/ui/skeleton';
 
 const Overview = lazy(() => import('./OverviewPanel'));

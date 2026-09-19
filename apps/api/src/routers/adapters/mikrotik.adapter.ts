@@ -8,7 +8,7 @@ export class MikroTikAdapter implements RouterAdapter {
   readonly description = {
     id: 'mikrotik-rest' as const,
     name: 'MikroTik · RouterOS REST',
-    requirements: 'RouterOS con REST habilitado (www-ssl) y cuenta con permisos read, write, api, firewall, queue y dhcp. Consultas /rest/system/resource y /rest/interface; escritura en /rest/ip/firewall/filter y /rest/queue/simple. Único admitido como equipo central por edificio. Probado con respuestas simuladas; pendiente validación en equipo físico.',
+    requirements: 'RouterOS con REST habilitado (www-ssl) y cuenta con permisos read, write, api, firewall, queue y dhcp. Consultas /rest/system/resource y /rest/interface; escritura en /rest/ip/firewall/filter y /rest/queue/simple. Único admitido como equipo central por edificio. Pendiente validación en equipo físico.',
     capabilities: { ...readCapabilities, suspend: true, reactivate: true, speed_limit: true, firewall: true, parental_control: true, switch_ports: true },
   };
 

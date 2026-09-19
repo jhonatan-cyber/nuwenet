@@ -12,13 +12,16 @@
     "build": "bun run --cwd apps/api build && bun run --cwd apps/web build",
     "check": "bun run --cwd apps/api check && bun run --cwd apps/web check",
     "start": "bun apps/api/dist/main.js",
-    "db:status": "bun scripts/database.mjs status",
-    "db:migrate": "bun scripts/database.mjs migrate",
-    "db:archive": "bun scripts/database.mjs archive",
+    "db:status": "bun tools/db/database.ts status",
+    "db:migrate": "bun tools/db/database.ts migrate",
+    "db:archive": "bun tools/db/database.ts archive",
     "test": "bun run build && bun test ./test",
-    "test:postgres": "bun run build && bun test ./test/postgres.test.js",
-    "test:ui": "bun run build && bun scripts/smoke-ui.mjs",
-    "verify": "bun run check && bun run test && bun scripts/smoke-ui.mjs"
+    "test:unit": "bun test ./test/unit",
+    "preview": "bun run --cwd apps/web build && bun tools/serve-web.ts",
+    "test:postgres": "bun run build && bun test ./test/integration/postgres.test.ts",
+    "test:ui": "bun run build && bun tools/e2e/smoke-ui.ts",
+    "test:dialogs": "bun run build && bun tools/e2e/verify-dialogs.ts",
+    "verify": "bun run check && bun run test && bun tools/e2e/smoke-ui.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

@@ -1,72 +1,137 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type SubmitEvent } from 'react';
+/**
+ * CustomerActions — dialog de operaciones sobre un departamento.
+ *
+ * Configuración declarativa  → customers/customer-action-config.ts
+ * Widget de consumo           → customers/UsageWidget.tsx
+ */
+import { useRef, useState, useSyncExternalStore, type SubmitEvent } from 'react';
+import { ExternalLink, KeyRound, UserPen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { DialogBody } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FormError } from '@/components/panel-shell';
-import { closeCustomerAction, getCustomerAction, getServerCustomerAction, openCustomerAction, showCustomerToken, subscribeCustomerActions, type CustomerActionContext, type CustomerActionState } from '@/lib/customer-actions-store';
-import { usageMarkup, mountUsage } from '@/scripts/usage.js';
-
-// This visualization is shared with the resident portal. Its lifecycle ends with the dialog.
-function Usage({ context }: { context: CustomerActionContext }) {
-  const root = useRef<HTMLDivElement>(null);
-  const body = useRef<HTMLDivElement>(null);
-  const month = new Date().toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' }).slice(0, 7);
-  useEffect(() => {
-    const element = root.current!;
-    body.current!.innerHTML = usageMarkup(false);
-    return mountUsage(element, (month: string) => context.request(`customers/${context.customer.id}/usage?month=${encodeURIComponent(month)}`));
-  }, [context]);
-  return <div ref={root}><div className="flex flex-wrap items-end gap-3"><div className="grid gap-2"><label htmlFor="action-usage-month" className="text-sm font-medium">Mes</label><Input id="action-usage-month" data-usage-month type="month" min="2000-01" max={month} defaultValue={month} /></div><Button type="button" variant="outline" data-usage-refresh>Actualizar</Button></div><div ref={body} /></div>;
-}
+import { DialogActions, DialogHead, FormField, PendingDialog, SubmitRow } from '@/components/shared/dialog';
+import {
+  closeCustomerAction, getCustomerAction, getServerCustomerAction,
+  openCustomerAction, showCustomerToken, subscribeCustomerActions,
+  type CustomerActionContext, type CustomerActionState,
+} from '@/features/customers/customer-actions-store';
+import { UsageWidget } from './customers/UsageWidget';
+import { actionConfig, READ_ONLY_KINDS } from './customers/customer-action-config';
+import { IconButton } from '@/components/shared/icon-button';
 
 function ActionContent({ state }: { state: CustomerActionState }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-  const sending = useRef(false);
-  const context = state.context;
+  const [error,   setError]   = useState('');
+  const sending  = useRef(false);
+  const context  = state.context;
   const customer = context?.customer;
-  const kind = context?.kind;
+  const kind     = context?.kind;
+
+  // Token de portal (estado post-submit)
   const link = state.token ? `${location.origin}/portal?token=${encodeURIComponent(state.token)}` : '';
-  const title = link ? 'Enlace del portal (única vez)' : kind === 'usage-history' ? 'Consumo mensual' : kind === 'portal-link' ? 'Portal del residente' : kind === 'rotate-portal-link' ? `Regenerar enlace de ${customer!.apartment}` : kind === 'change-holder' ? `Cambio de titular de ${customer!.apartment}` : kind === 'set-ip' ? `IP de ${customer!.apartment}` : kind === 'archive' ? customer!.archived ? 'Restaurar departamento' : 'Archivar departamento' : customer!.status === 'active' ? 'Cortar internet' : 'Reactivar internet';
-  const description = link ? 'Copia y entrega este enlace ahora. No volverá a mostrarse. Quien lo tenga puede consultar la cuenta y reportar pagos.' : kind === 'usage-history' ? `Historial del departamento ${customer!.apartment}.` : kind === 'portal-link' ? `Enlace privado del departamento ${customer!.apartment}. Genera uno nuevo para entregarlo; solo se verá una vez.` : kind === 'rotate-portal-link' ? 'Se invalidará de inmediato el enlace anterior. Pagos e historial se conservan. El nuevo enlace se mostrará una sola vez.' : kind === 'change-holder' ? 'Actualiza el titular e invalida el acceso anterior. El nuevo enlace se mostrará una sola vez.' : kind === 'set-ip' ? 'Se limpiarán las reglas de la dirección anterior y se aplicará el estado del servicio a la nueva. Vacío para quitarla.' : kind === 'archive' ? `${customer!.archived ? 'Restaurar' : 'Archivar y suspender'} el departamento ${customer!.apartment}. Se conserva su historial.` : `${customer!.status === 'active' ? 'Cortar' : 'Reactivar'} el internet del departamento ${customer!.apartment}. La orden se enviará al equipo central configurado.`;
-  const submitLabel = kind === 'rotate-portal-link' ? 'Regenerar e invalidar anterior' : kind === 'change-holder' ? 'Cambiar titular e invalidar acceso' : kind === 'archive' ? customer!.archived ? 'Restaurar' : 'Archivar' : kind === 'access' ? customer!.status === 'active' ? 'Cortar' : 'Reactivar' : 'Guardar';
-  const readOnly = !!link || kind === 'portal-link' || kind === 'usage-history';
+
+  // Derivar título, descripción y submitLabel desde config o casos especiales
+  const cfg = kind ? actionConfig[kind] : undefined;
+  const title = link
+    ? 'Enlace del portal (única vez)'
+    : kind === 'usage-history' ? 'Consumo mensual'
+    : kind === 'portal-link'  ? 'Portal del residente'
+    : cfg && context ? cfg.title(context) : '';
+
+  const description = link
+    ? 'Copia y entrega este enlace ahora. No volverá a mostrarse. Quien lo tenga puede consultar la cuenta y reportar pagos.'
+    : kind === 'usage-history' ? `Historial del departamento ${customer!.apartment}.`
+    : kind === 'portal-link'   ? `Enlace privado del departamento ${customer!.apartment}. Genera uno nuevo para entregarlo; solo se verá una vez.`
+    : cfg && context ? cfg.description(context) : '';
+
+  const submitLabel = cfg && context ? cfg.submitLabel(context) : 'Guardar';
+  const readOnly    = !!link || (kind ? READ_ONLY_KINDS.includes(kind) : false);
+
   async function submit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault(); if (sending.current || !context || !customer) return;
+    event.preventDefault(); if (sending.current || !context || !customer || !cfg) return;
     const values = new FormData(event.currentTarget);
-    const name = String(values.get('name') || '').trim();
-    if (kind === 'change-holder' && !name) { setError('Escribe el nuevo titular.'); return; }
+    if (kind === 'change-holder' && !String(values.get('name') || '').trim()) {
+      setError('Escribe el nuevo titular.'); return;
+    }
     sending.current = true; setPending(true); setError('');
     try {
-      const route = kind === 'rotate-portal-link' ? 'customers/portal-link' : kind === 'change-holder' ? 'customers/change-holder' : kind === 'set-ip' ? 'customers/ip' : kind === 'archive' ? 'customers/archive' : 'access';
-      const body = { id: customer.id, ...(kind === 'change-holder' ? { name, phone: String(values.get('phone') || '').trim() } : kind === 'set-ip' ? { ip: String(values.get('ip') || '').trim() || undefined } : kind === 'archive' ? { archived: !customer.archived } : kind === 'access' ? { status: customer.status === 'active' ? 'suspended' : 'active' } : {}) };
-      const result = await context.request(route, body);
-      // Do not reopen a dismissed dialog after navigation or a session change.
+      const result = await context.request(cfg.route, cfg.buildBody(context, values));
       if (getCustomerAction() !== state) return;
       if (result?.portal_link?.token) showCustomerToken(result.portal_link.token);
       else closeCustomerAction();
       context.notify('Operación guardada.');
-      void context.refresh().catch(() => context.notify('La operación se guardó, pero no se pudo actualizar el listado. Usa Actualizar.'));
+      void context.refresh().catch(() => context.notify('La operación se guardó, pero no se pudo actualizar el listado.'));
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo completar la operación.'); }
     finally { sending.current = false; setPending(false); }
   }
-  return <Dialog open onOpenChange={open => { if (!open && !sending.current) closeCustomerAction(); }}>
-    <DialogContent className={`flex max-h-[90dvh] flex-col gap-0 overflow-hidden overflow-y-hidden p-0${kind === 'usage-history' ? ' sm:max-w-3xl' : ''}`} showCloseButton={!pending} onEscapeKeyDown={event => { if (sending.current) event.preventDefault(); }} onPointerDownOutside={event => { if (sending.current) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); if (!getCustomerAction()) state.trigger?.focus(); }}>
-      <DialogHeader className="shrink-0 px-6 pt-6"><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+
+  return (
+    <PendingDialog
+      busy={!!sending.current}
+      onClose={closeCustomerAction}
+      className={kind === 'usage-history' ? 'sm:max-w-3xl' : undefined}
+      restoreFocus={() => { if (!getCustomerAction()) state.trigger?.focus(); }}
+    >
+      <DialogHead title={title} description={description} />
+
       <DialogBody>
-      {link && <div className="grid gap-3"><label htmlFor="customer-portal-token" className="text-sm font-medium">Enlace privado</label><Input id="customer-portal-token" data-portal-link readOnly value={link} onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()} /><Button asChild variant="outline"><a href={link} target="_blank" rel="noreferrer">Abrir portal</a></Button></div>}
-      {kind === 'usage-history' && context && <Usage context={context} />}
-      {kind === 'portal-link' && context && <div className="grid gap-4"><p className="text-sm text-muted-foreground">Emitido: {customer!.access_issued_at || '—'} · Vence: {customer!.access_expires_at || 'sin caducidad'} · v{customer!.access_version || 1}</p><div className="flex flex-wrap gap-2"><Button onClick={() => openCustomerAction({ ...context, kind: 'rotate-portal-link' })}>Generar y entregar enlace</Button><Button variant="outline" onClick={() => openCustomerAction({ ...context, kind: 'change-holder' })}>Cambio de titular</Button></div></div>}
-      {!readOnly && <form id="customer-action-form" onSubmit={submit} aria-busy={pending} className="grid gap-4">
-        {kind === 'set-ip' && <div className="grid gap-2"><label htmlFor="action-ip" className="text-sm font-medium">IP privada</label><Input id="action-ip" name="ip" defaultValue={customer!.ip || ''} disabled={pending} /></div>}
-        {kind === 'change-holder' && <><div className="grid gap-2"><label htmlFor="action-holder" className="text-sm font-medium">Nuevo titular</label><Input id="action-holder" name="name" maxLength={160} required disabled={pending} /></div><div className="grid gap-2"><label htmlFor="action-phone" className="text-sm font-medium">Teléfono (opcional)</label><Input id="action-phone" name="phone" maxLength={80} disabled={pending} /></div></>}
-        <FormError message={error} />
-      </form>}
-      </DialogBody>
-      {readOnly ? <DialogFooter className="shrink-0 border-t px-6 py-4"><Button variant="outline" onClick={closeCustomerAction}>Cerrar</Button></DialogFooter> : <DialogFooter className="shrink-0 border-t px-6 py-4"><Button type="button" variant="outline" disabled={pending} onClick={closeCustomerAction}>Cancelar</Button><Button type="submit" form="customer-action-form" disabled={pending}>{pending ? 'Guardando…' : submitLabel}</Button></DialogFooter>}
-    </DialogContent>
-  </Dialog>;
+          {/* Enlace del portal — solo lectura tras submit */}
+          {link && (
+            <div className="grid gap-3">
+              <label htmlFor="customer-portal-token" className="text-sm font-medium">Enlace privado</label>
+              <Input id="customer-portal-token" data-portal-link readOnly value={link} onFocus={e => e.currentTarget.select()} onClick={e => e.currentTarget.select()} />
+              <div className="flex gap-2"><Tooltip><TooltipTrigger asChild><Button asChild variant="outline" size="icon-sm" aria-label="Abrir portal"><a href={link} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" /></a></Button></TooltipTrigger><TooltipContent>Abrir portal</TooltipContent></Tooltip></div>
+            </div>
+          )}
+
+          {/* Historial de consumo */}
+          {kind === 'usage-history' && context && <UsageWidget context={context} />}
+
+          {/* Info del portal + acciones rápidas */}
+          {kind === 'portal-link' && context && (
+            <div className="grid gap-4">
+              <p className="text-sm text-muted-foreground">
+                Emitido: {customer!.access_issued_at || '—'} · Vence: {customer!.access_expires_at || 'sin caducidad'} · v{customer!.access_version || 1}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <IconButton label="Generar y entregar enlace" size="icon-sm" onClick={() => openCustomerAction({ ...context, kind: 'rotate-portal-link' })}><KeyRound aria-hidden="true" /></IconButton>
+                <IconButton label="Cambio de titular" variant="outline" size="icon-sm" onClick={() => openCustomerAction({ ...context, kind: 'change-holder' })}><UserPen aria-hidden="true" /></IconButton>
+              </div>
+            </div>
+          )}
+
+          {/* Formulario de mutación */}
+          {!readOnly && (
+            <form id="customer-action-form" onSubmit={submit} aria-busy={pending} className="grid gap-4">
+              {kind === 'set-ip' && (
+                <FormField id="action-ip" label="IP privada">
+                  <Input id="action-ip" name="ip" defaultValue={customer!.ip || ''} disabled={pending} />
+                </FormField>
+              )}
+              {kind === 'change-holder' && (
+                <>
+                  <FormField id="action-holder" label="Nuevo titular">
+                    <Input id="action-holder" name="name" maxLength={160} required disabled={pending} />
+                  </FormField>
+                  <FormField id="action-phone" label="Teléfono (opcional)">
+                    <Input id="action-phone" name="phone" maxLength={80} disabled={pending} />
+                  </FormField>
+                </>
+              )}
+              <FormError message={error} />
+            </form>
+          )}
+        </DialogBody>
+
+        {readOnly
+          ? <DialogActions><Button variant="outline" onClick={closeCustomerAction}>Cerrar</Button></DialogActions>
+          : <SubmitRow busy={pending} onClose={closeCustomerAction} label={submitLabel} form="customer-action-form" />}
+    </PendingDialog>
+  );
 }
+
 export default function CustomerActions() {
   const state = useSyncExternalStore(subscribeCustomerActions, getCustomerAction, getServerCustomerAction);
   return state ? <ActionContent key={state.revision} state={state} /> : null;

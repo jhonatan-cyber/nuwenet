@@ -3,8 +3,8 @@
 @source '../components/**/*.{tsx,astro}';
 @source '../layouts/**/*.astro';
 @source '../pages/**/*.astro';
-@source '../scripts/**/*.js';
-@source '../lib/**/*.{ts,js}';
+@source '../scripts/**/*.ts';
+@source '../lib/**/*.ts';
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

@@ -1,26 +1,40 @@
 ---
 import { pages } from '../lib/pages';
-import { LayoutDashboard, Building2, Users, Tag, Receipt, Network, Router, Activity, Banknote, Settings, UserCog, Database, ScrollText } from 'lucide-astro';
+import { LayoutDashboard, Activity, Users, Tag, Receipt, Banknote, Network, Router, Building2, UserCog, Settings, Database, ScrollText } from 'lucide-astro';
 
-// Nombres de sección y visibilidad viven en lib/pages; aquí solo el orden y el icono.
-const order = ['overview', 'buildings', 'customers', 'plans', 'billing', 'network', 'routers', 'activity', 'payments', 'settings', 'users', 'backups', 'audit'];
+// Nombres de sección y visibilidad viven en lib/pages; aquí solo grupos, orden e icono.
+// El orden sigue el flujo diario del super-admin: ver, gestionar, red y sistema.
+const groups = [
+  { label: 'General', items: ['overview', 'activity'] },
+  { label: 'Gestión', items: ['customers', 'plans', 'billing', 'payments'] },
+  { label: 'Red', items: ['network', 'routers'] },
+  { label: 'Sistema', items: ['buildings', 'users', 'settings', 'backups', 'audit'] },
+] as const;
 const icons = {
-  overview: LayoutDashboard, buildings: Building2, customers: Users, plans: Tag, billing: Receipt, network: Network, routers: Router,
-  activity: Activity, payments: Banknote, settings: Settings, users: UserCog, backups: Database, audit: ScrollText,
+  overview: LayoutDashboard, activity: Activity, customers: Users, plans: Tag, billing: Receipt, payments: Banknote,
+  network: Network, routers: Router, buildings: Building2, users: UserCog, settings: Settings, backups: Database, audit: ScrollText,
 };
-const sections = order.map(id => ({ id, Icon: icons[id as keyof typeof icons], label: pages[id].label }));
 ---
 <aside id="main-sidebar" class="floating-sidebar" data-open="false">
   <div class="pb-7">
     <a class="flex items-center gap-2.5 px-3 text-2xl font-semibold tracking-tight" href="/">◈ <span>nuwe<strong>net</strong></span></a>
   </div>
   <div class="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
-    <p class="px-3 py-2 text-[10px] tracking-widest text-muted-foreground">ESPACIO DE TRABAJO</p>
-    <nav class="grid gap-1" aria-label="Navegación principal">
-      {sections.map(section => (
-        <button data-page={section.id} data-selected={section.id === 'overview' ? 'true' : 'false'} class="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground [&_svg]:size-4 [&_svg]:shrink-0">
-          <section.Icon aria-hidden="true" /> {section.label}
-        </button>
+    <nav class="grid gap-5" aria-label="Navegación principal">
+      {groups.map((group) => (
+        <section>
+          <p class="px-3 py-2 text-[10px] tracking-widest text-muted-foreground">{group.label.toUpperCase()}</p>
+          <div class="grid gap-1">
+            {group.items.map((id) => {
+              const Icon = icons[id as keyof typeof icons];
+              return (
+                <button data-page={id} data-selected={id === 'overview' ? 'true' : 'false'} class="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground [&_svg]:size-4 [&_svg]:shrink-0">
+                  <Icon aria-hidden="true" /> {pages[id].label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
       ))}
     </nav>
   </div>

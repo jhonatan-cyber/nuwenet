@@ -97,11 +97,14 @@ No uses variables `PUBLIC_*` para credenciales: Astro puede incluirlas en el nav
 
 ## Estructura
 
+- `apps/api/src/config`: constantes y validación de entorno (`app.config`).
+- `apps/api/src/infrastructure/http`: middlewares (rate-limit, cabeceras, auth) y `infrastructure/captive-portal`.
+- `apps/api/src/modules/<dominio>`: un servicio y un controlador por responsabilidad (`buildings`, `plans`, `customers`, `billing`, `access`, `portal`, `network`, `settings`, `state`, `backups`, `usage`, `network-design`, `retired-rows`, `jobs`, `shared`). `management/management.service.ts` queda como fachada que delega.
+- `apps/api/src/routers/services`: `operation` (estado compartido), `crud`, `discovery`, `actions`, `provisioning`; `routers.service.ts` delega y `routers-crud/routers-ops` separan los endpoints.
 - `apps/api/src/database`: conexión PostgreSQL mediante Bun SQL y transacciones; el mapa de la capa de datos está en `apps/api/src/database/migrations/index.ts`.
-- `apps/api/src/management`: controladores, DTOs y reglas de planes, departamentos, cobros y acceso.
-- `apps/web/src`: páginas, componentes, layout, estilos e interacción del panel Astro.
-- `test`: integración PostgreSQL.
-- `scripts`: diagnóstico, recuperación de respaldos y prueba del navegador.
+- `apps/web/src/features/<dominio>`: estado por dominio (`auth`, `billing`, `customers`, `plans`, `operations`, `routers-network`, `overview`); `shared/lib` para lo transversal (`panel-query`, `api-client`).
+- `test/{unit,integration,contract,fixtures}`: unitarias, integración PostgreSQL, contrato de routers y fixtures.
+- `tools/{db,ops,e2e,dev}`: base de datos, operaciones, pruebas de navegador y desarrollo.
 
 Las consultas de negocio se parametrizan con Bun SQL. PostgreSQL utiliza un bloqueo transaccional compartido entre instancias para evitar duplicar pagos y decisiones de acceso simultáneas. Las migraciones posteriores deben añadirse como nuevas versiones.
 
@@ -138,17 +141,17 @@ También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La 
 
 ## Funciones y alcance
 
-Planes, departamentos con IP privada opcional, mensualidades, pagos completos o abonos parciales, revisión manual o automática de vencimientos, suspensión y reactivación e historial. Sin IP o sin equipo central el control queda simulado; con IP y equipo central registrado se aplica en red. Los importes se guardan en centavos con la moneda de `CURRENCY` solo en presentación. Los vencimientos usan America/La_Paz y el historial muestra fechas UTC.
+Planes, departamentos con IP privada opcional, mensualidades, pagos completos o abonos parciales, revisión manual o automática de vencimientos, suspensión y reactivación e historial. El control de red exige IP y equipo central registrado; sin ellos la orden queda en fallo con el motivo. Los importes se guardan en centavos con la moneda de `CURRENCY` solo en presentación. Los vencimientos usan America/La_Paz y el historial muestra fechas UTC.
 
 El panel y las operaciones de negocio exigen sesión. Sin usuarios solo se permite crear el primer usuario, que es el super-admin único y global (dueño del sistema). El super-admin da de alta a los administradores, les asigna edificios y configura la red de cada uno. Sin roles de caja ni técnico. El sistema no genera ni envía notificaciones a residentes.
 
 La generación incluye departamentos suspendidos y excluye archivados. El día del vencimiento y los días de gracia configurados no provocan corte. Un pago puede reactivar si no quedan cuotas vencidas; nunca elimina un bloqueo manual. Los abonos, referencias, recibos y reversiones conservan el historial.
 
-El control de acceso es **mixto**: real en el equipo central por IP (`suspend`, `reactivate`, `speed_limit`, `firewall` por destino y `parental_control` por horario) y simulado en el resto. Cada edificio tiene su propio equipo central MikroTik, sus planes, departamentos e IPs (el departamento y la IP se validan por edificio y pueden repetirse en edificios distintos). ARRIS TG2492LG-NA con firmware 9.1.103HB admite filtros IPv4 TCP/UDP por IP, puertos y horarios; no ofrece límites de velocidad ni sustituye al central MikroTik. OpenWrt permite consulta. El estado guardado de un router no acredita conectividad física actual.
+El control de acceso es **real** en el equipo central por IP (`suspend`, `reactivate`, `speed_limit`, `firewall` por destino y `parental_control` por horario). Cada edificio tiene su propio equipo central MikroTik obligatorio, sus planes, departamentos e IPs (el departamento y la IP se validan por edificio y pueden repetirse en edificios distintos). ARRIS TG2492LG-NA con firmware 9.1.103HB admite filtros IPv4 TCP/UDP por IP, puertos y horarios; no ofrece límites de velocidad ni sustituye al central MikroTik. OpenWrt permite consulta. El estado guardado de un router no acredita conectividad física actual.
 
 El portal permite consultar la cuenta, las cuotas, los pagos y los recibos. Los pagos y abonos se registran manualmente en administración; no se generan cobros bancarios ni QR. No hay facturación fiscal. El consumo incluye historial diario y mensual persistente a partir de muestras de colas MikroTik, con indicación de reinicios y huecos; el tráfico en vivo es una consulta distinta. La puesta en marcha con residentes exige validar servidor, red e integraciones en su entorno real.
 
-Desde **Respaldos** puedes crear y verificar copias; los intervalos se configuran en **Edificio y automatización**. PostgreSQL utiliza `pg_dump` y `pg_restore`; instala estas herramientas en la VPS. Para restaurar a un directorio nuevo utiliza `scripts/restore-backup.mjs` (ver su ayuda con `bun scripts/restore-backup.mjs --help`).
+Desde **Respaldos** puedes crear y verificar copias; los intervalos se configuran en **Edificio y automatización**. PostgreSQL utiliza `pg_dump` y `pg_restore`; instala estas herramientas en la VPS. Para restaurar a un directorio nuevo utiliza `tools/db/restore-backup.ts` (ver su ayuda con `bun tools/db/restore-backup.ts --help`).
 
 Documentación: [NestJS](https://docs.nestjs.com/first-steps), [Astro](https://docs.astro.build/en/guides/client-side-scripts/) y [Bun SQL](https://bun.com/docs/runtime/sql).
 

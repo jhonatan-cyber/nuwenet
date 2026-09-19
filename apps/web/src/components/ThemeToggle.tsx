@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { getServerSnapshot, getSnapshot, setTheme, subscribe, type Theme } from '@/lib/account-store';
+import { getServerSnapshot, getSnapshot, setTheme, subscribe, type Theme } from '@/features/auth/account-store';
 
 const options: { value: Theme; label: string; Icon: typeof Sun }[] = [
   { value: 'light', label: 'Claro', Icon: Sun },
