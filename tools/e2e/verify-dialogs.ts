@@ -37,6 +37,12 @@ try {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   const api = async (route: string) => (await page.request.get(`http://127.0.0.1:${port}/api/${route}`)).json();
+  const post = async (route: string, body: unknown) => {
+    const response = await page.request.post(`http://127.0.0.1:${port}/api/${route}`, { data: body });
+    const text = await response.text();
+    if (!response.ok()) throw new Error(`${route} → ${response.status()} ${text}`);
+    return text ? JSON.parse(text) : {};
+  };
   await page.goto(`http://127.0.0.1:${port}`);
   await page.getByLabel('Usuario', { exact: true }).fill('admin');
   await page.getByLabel('Contraseña', { exact: true }).fill('fixture-password');
@@ -212,6 +218,46 @@ try {
     await page.getByText('No hay registros.', { exact: true }).waitFor();
     const state = await api('state');
     if (state.customers?.length) throw new Error('el departamento no se eliminó');
+  });
+
+  await step('control de acceso: órdenes reemplazadas y fallidas se distinguen', async () => {
+    const estado = await api('state');
+    const building = estado.enforcement.buildings[0].building_id;
+    const plan = estado.plans.find((row: { name: string }) => row.name === 'Plan verificado').id;
+    // Con IP y sin equipo central la orden queda en fallo con el motivo; asignar el
+    // primer central la reemplaza, porque una orden nueva ya sí puede aplicarse.
+    await post('customers', { apartment: '301', name: 'Con IP', plan_id: plan, ip: '192.168.1.10', building_id: building });
+    await post('routers', { name: 'Central de prueba', adapter: 'mikrotik-rest', host: '192.168.1.1', port: 443, protocol: 'https', username: 'fixture', password: 'fixture', building_id: building });
+    const central = (await api('state')).routers.find((router: { name: string }) => router.name === 'Central de prueba').id;
+    await post('buildings/central', { building_id: building, central_router_id: central });
+    // Sin IP la orden no puede aplicarse y queda fallida, con reintento a mano.
+    const sinIp = await post('customers', { apartment: '302', name: 'Sin IP', plan_id: plan, building_id: building });
+    await post('access', { id: sinIp.portal_link.customer_id, status: 'suspended' });
+
+    await page.locator('nav [data-page="network"]').click();
+    await page.getByRole('heading', { name: 'Control de acceso', exact: true }).waitFor();
+    // Dos órdenes del mismo departamento son lo normal: la reemplazada y la vigente.
+    const reemplazada = page.getByRole('row').filter({ hasText: 'Reemplazada' }).filter({ has: page.getByRole('cell', { name: '301', exact: true }) });
+    await reemplazada.waitFor();
+    if (await reemplazada.count() !== 1) throw new Error(`se esperaba una sola orden reemplazada de 301 (${await reemplazada.count()})`);
+    const texto = await reemplazada.innerText();
+    if (!/Fuera de la cola/.test(texto)) throw new Error(`la orden reemplazada no explica por qué salió de la cola: ${texto}`);
+    if (!/Motivo original: El edificio no tiene equipo central/.test(texto)) throw new Error(`la orden reemplazada no conserva el motivo original: ${texto}`);
+    if (!/—/.test(texto)) throw new Error(`una orden reemplazada no tiene próximo intento: ${texto}`);
+    if (await reemplazada.getByRole('button', { name: /^Reintentar/ }).count()) throw new Error('una orden reemplazada no se reintenta');
+    const fallida = page.getByRole('row').filter({ has: page.getByRole('cell', { name: '302', exact: true }) });
+    await fallida.getByText('Fallido', { exact: true }).waitFor();
+    if (!(await fallida.getByRole('button', { name: 'Reintentar orden de 302', exact: true }).count())) throw new Error('la orden fallida debe poder reintentarse');
+    // La distinción es visual: trazo discontinuo y color apagado contra el rojo del fallo.
+    const color = async (row: typeof reemplazada, text: string) => row.getByText(text, { exact: true }).first().evaluate(el => {
+      const style = getComputedStyle(el);
+      return `${style.borderStyle} ${style.color}`;
+    });
+    const apagada = await color(reemplazada, 'Reemplazada');
+    const roja = await color(fallida, 'Fallido');
+    if (!apagada.startsWith('dashed ')) throw new Error(`la orden reemplazada no se distingue por su trazo: ${apagada}`);
+    if (apagada.split(' ').slice(1).join(' ') === roja.split(' ').slice(1).join(' ')) throw new Error(`reemplazada y fallida se ven iguales (${apagada})`);
+    if (pageErrors.length) throw new Error(`errores de página: ${pageErrors.join(' | ')}`);
   });
 
   // Último paso: navega fuera del panel, así que va después de todo lo demás.

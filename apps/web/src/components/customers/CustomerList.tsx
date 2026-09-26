@@ -18,9 +18,15 @@ const networkLabels: Record<string, string> = {
   pending: 'Pendiente',
   running: 'Aplicando',
   applied: 'Aplicado',
+  no_ip: 'Sin IP privada',
   failed: 'Fallido',
   legacy_failed: 'Fallo histórico',
 };
+
+// El estado lo fija la cola, pero la IP es lo que se ve: un departamento sin IP privada
+// no tiene red que mostrar ni fallo que explicar, aunque su estado guardado sea anterior.
+const networkLabel = (customer: Pick<Customer, 'ip' | 'network_state'>) =>
+  customer.ip ? networkLabels[customer.network_state] || 'Sin verificar' : networkLabels.no_ip;
 
 export function CustomerList({ context }: { context: CustomersContext }) {
   const [search, setSearch] = useState(context.search);
@@ -281,12 +287,8 @@ export function CustomerList({ context }: { context: CustomersContext }) {
                   <div className="min-w-0">
                     <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Red</span>
                     <p className="text-xs font-medium text-foreground truncate mt-0.5">
-                      {!customer.ip ? 'Sin red' : (
-                        <>
-                          {customer.manual_hold ? 'Bloqueo · ' : ''}
-                          {networkLabels[customer.network_state] || 'Sin verificar'}
-                        </>
-                      )}
+                      {customer.ip && customer.manual_hold ? 'Bloqueo · ' : ''}
+                      {networkLabel(customer)}
                     </p>
                     {customer.ip && customer.network_checked_at && (
                       <p className="text-[10px] text-muted-foreground truncate mt-0.5">
@@ -381,16 +383,10 @@ export function CustomerList({ context }: { context: CustomersContext }) {
                   </TableCell>
                   <TableCell>
                     <div className="text-xs">
-                      {!customer.ip ? (
-                        <span className="text-muted-foreground">Sin red</span>
-                      ) : (
-                        <>
-                          {customer.manual_hold && <span className="font-semibold text-destructive mr-1">Bloqueo manual ·</span>}
-                          <span className="text-muted-foreground">{networkLabels[customer.network_state] || 'Sin verificar'}</span>
-                          {customer.network_checked_at && (
-                            <p className="text-[11px] text-muted-foreground/80 mt-0.5">{context.date(customer.network_checked_at)}</p>
-                          )}
-                        </>
+                      {customer.manual_hold && customer.ip && <span className="font-semibold text-destructive mr-1">Bloqueo manual ·</span>}
+                      <span className="text-muted-foreground">{networkLabel(customer)}</span>
+                      {customer.ip && customer.network_checked_at && (
+                        <p className="text-[11px] text-muted-foreground/80 mt-0.5">{context.date(customer.network_checked_at)}</p>
                       )}
                     </div>
                   </TableCell>

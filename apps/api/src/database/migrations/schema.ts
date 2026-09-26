@@ -211,20 +211,20 @@ export const schemaMigrations: Migration[] = [
     up: async (_db, tx) => safeAlter(tx, `ALTER TABLE buildings ADD COLUMN address TEXT NOT NULL DEFAULT ''`),
   },
   {
-    version: 12,
-    name: 'Activar y desactivar edificios y routers',
-    up: async (_db, tx) => {
-      for (const table of ['buildings', 'routers']) {
-        await safeAlter(tx, `ALTER TABLE ${table} ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`);
-      }
-    },
-  },
-  {
     version: 11,
     name: 'Datos del administrador',
     up: async (_db, tx) => {
       for (const definition of [`ci TEXT NOT NULL DEFAULT ''`, `first_name TEXT NOT NULL DEFAULT ''`, `last_name TEXT NOT NULL DEFAULT ''`, `address TEXT NOT NULL DEFAULT ''`, `phone TEXT NOT NULL DEFAULT ''`]) {
         await safeAlter(tx, `ALTER TABLE users ADD COLUMN ${definition}`);
+      }
+    },
+  },
+  {
+    version: 12,
+    name: 'Activar y desactivar edificios y routers',
+    up: async (_db, tx) => {
+      for (const table of ['buildings', 'routers']) {
+        await safeAlter(tx, `ALTER TABLE ${table} ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`);
       }
     },
   },
@@ -292,19 +292,6 @@ export const schemaMigrations: Migration[] = [
     up: async (_db, tx) => tx.unsafe('ALTER TABLE customers ALTER COLUMN plan_id DROP NOT NULL'),
   },
   {
-    version: 20,
-    name: 'Edificio obligatorio en departamentos',
-    up: async (_db, tx) => {
-      // Con NULL, el UNIQUE(building_id, apartment) no frena duplicados.
-      const [first] = await tx<{ id: string }[]>`SELECT id FROM buildings ORDER BY id LIMIT 1`;
-      if (!first) return;
-      await tx`UPDATE customers SET building_id=${first.id} WHERE building_id IS NULL`;
-      await tx`UPDATE plans SET building_id=${first.id} WHERE building_id IS NULL`;
-      await tx`UPDATE routers SET building_id=${first.id} WHERE building_id IS NULL`;
-      await tx.unsafe('ALTER TABLE customers ALTER COLUMN building_id SET NOT NULL');
-    },
-  },
-  {
     version: 19,
     name: 'Tablas de consumo por router y por día',
     up: async (_db, tx) => {
@@ -329,6 +316,19 @@ export const schemaMigrations: Migration[] = [
       await tx.unsafe(`CREATE TABLE usage_router_state (
         router_id UUID PRIMARY KEY REFERENCES routers(id) ON DELETE CASCADE,
         last_attempt TEXT NOT NULL,last_success TEXT,status TEXT NOT NULL)`);
+    },
+  },
+  {
+    version: 20,
+    name: 'Edificio obligatorio en departamentos',
+    up: async (_db, tx) => {
+      // Con NULL, el UNIQUE(building_id, apartment) no frena duplicados.
+      const [first] = await tx<{ id: string }[]>`SELECT id FROM buildings ORDER BY id LIMIT 1`;
+      if (!first) return;
+      await tx`UPDATE customers SET building_id=${first.id} WHERE building_id IS NULL`;
+      await tx`UPDATE plans SET building_id=${first.id} WHERE building_id IS NULL`;
+      await tx`UPDATE routers SET building_id=${first.id} WHERE building_id IS NULL`;
+      await tx.unsafe('ALTER TABLE customers ALTER COLUMN building_id SET NOT NULL');
     },
   },
   {
@@ -413,6 +413,19 @@ export const schemaMigrations: Migration[] = [
       await tx.unsafe(`ALTER TABLE commands ALTER COLUMN mode SET DEFAULT 'mikrotik-failed'`);
       await tx`UPDATE customers SET network_state='failed' WHERE network_state='simulated'`;
       await tx`UPDATE commands SET status='failed',mode='mikrotik-failed',last_error=COALESCE(last_error,'El edificio no tiene equipo central asignado. Asigna un MikroTik central y reintenta la orden.') WHERE status='simulated' OR mode='simulated'`;
+    },
+  },
+  {
+    version: 31,
+    name: 'Departamentos sin IP con estado propio',
+    up: async (_db, tx) => {
+      await tx.unsafe(`ALTER TABLE customers ALTER COLUMN network_state SET DEFAULT 'no_ip'`);
+      // Una base anterior daba por fallido lo que en realidad es «no hay IP que aplicar».
+      // Los departamentos con equipos vinculados sí se pueden operar sin IP propia, así
+      // que conservan su estado real y quedan fuera de la corrección.
+      await tx`UPDATE customers AS c SET network_state='no_ip' WHERE c.ip IS NULL AND c.network_state IN ('failed','simulated')
+        AND NOT EXISTS (SELECT 1 FROM customer_devices d WHERE d.customer_id=c.id)
+        AND NOT EXISTS (SELECT 1 FROM customer_network_targets t WHERE t.customer_id=c.id)`;
     },
   },
 ];

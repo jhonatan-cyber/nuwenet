@@ -112,32 +112,29 @@ Todas las tablas usan un `id UUID` primario generado con UUID v7 (`apps/api/src/
 
 ## Validación
 
-Ejecuta estos comandos por separado: Astro comparte caché entre comprobación y compilación.
+Un solo comando comprueba el proyecto de punta a punta:
 
 ```sh
-bun run check
-bun run test
-bun run test:postgres
-```
-
-Las pruebas verifican registros, validaciones, cobros concurrentes y persistencia dentro de `nuwenet`. Cada escenario crea un esquema `nuwenet_test_*` y elimina solo ese esquema al terminar. Las tablas operativas permanecen en `public`. Se necesita permiso `CREATE` sobre `nuwenet` para crear esquemas, sin permisos de creación de bases.
-
-Para validar la interfaz:
-
-```sh
-bunx playwright install chromium
-bun run test:ui
-```
-
-Para ejecutar tipos, compilación, suite e interfaz en secuencia, sin compilar dos veces:
-
-```sh
+bunx playwright install chromium   # una sola vez: navegador de los recorridos E2E
 bun run verify
 ```
 
-La prueba de interfaz arranca su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a un esquema temporal dentro de `nuwenet`. Comprueba el código de instalación ausente, incorrecto y válido; bloquea HTTP saliente desde el backend. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su esquema temporal.
+`bun run verify` ejecuta los pasos en este orden y se detiene en el primero que falle, diciendo qué paso fue y qué revisar:
 
-También puedes definir `BROWSER_CHANNEL=chrome` para usar Chrome instalado. La prueba del navegador siempre utiliza un esquema temporal dentro de `nuwenet`.
+| Paso | Qué comprueba |
+|---|---|
+| `check` | Tipos de la API y de la web, sin emitir (`tsc --noEmit` y `astro check`). |
+| `build` | Compila la API a `apps/api/dist` y la web a `apps/web/dist` (lo que sirve la API). Es la única compilación de la tanda. |
+| `base` | Conexión a PostgreSQL y estado del ledger de migraciones, sin efectos (`bun run db:status`). |
+| `test` | Las suites de `bun test ./test`: unitarias, de contrato y de integración. |
+| `dialogs` | E2E de navegador: diálogos, tablas y catálogo interno, con el efecto real comprobado por API. |
+| `ui` | E2E de navegador: recorrido completo del panel, del código de instalación a los equipos de red. |
+
+`--sin-navegador` omite los dos pasos de navegador, para máquinas sin Chromium. Cada paso se puede repetir por separado con su script (`bun run test`, `bun run test:dialogs`, `bun run test:ui`), que recompila por su cuenta; `bun run check` y `bun run test:unit` no necesitan base de datos.
+
+Requisitos: la conexión PostgreSQL del `.env` (cada escenario crea un esquema `nuwenet_test_*` y borra solo ese esquema; nunca se crean ni se borran bases, y se necesita permiso `CREATE` sobre `nuwenet`), `pg_dump` y `pg_restore` para los escenarios de respaldo y de archivo heredado, y Chromium de Playwright (o `BROWSER_CHANNEL=chrome` para usar Chrome instalado).
+
+Las pruebas verifican registros, validaciones, cobros concurrentes y persistencia dentro de `nuwenet`. Las pruebas de navegador arrancan su servidor con `--no-env-file`, un entorno limitado a variables del sistema y la conexión a un esquema temporal dentro de `nuwenet`; comprueban el código de instalación ausente, incorrecto y válido, y bloquean HTTP saliente desde el backend. Los fallos de navegador guardan una captura `nuwenet-ui-smoke-failure.png` en el directorio temporal del sistema. La suite de autenticación conserva el escenario local sin código. PostgreSQL se valida por separado con `bun run test:postgres` y su esquema temporal.
 
 ## Funciones y alcance
 

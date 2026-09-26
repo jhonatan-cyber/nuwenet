@@ -1,20 +1,24 @@
 import { useState, useSyncExternalStore } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { PanelShell } from '@/components/panel-shell';
+import { IconButton } from '@/components/shared/icon-button';
 import { DataTable } from '@/components/shared/table';
 import { getOverview, getServerOverview, subscribeOverview, type OverviewContext } from '@/features/overview/overview-store';
 import { overviewView } from '@/lib/pages';
 
-const networkLabels: Record<string, string> = { pending: 'Pendiente', running: 'Aplicando', applied: 'Aplicado', failed: 'Fallido', legacy_failed: 'Fallo histórico' };
+const networkLabels: Record<string, string> = { pending: 'Pendiente', running: 'Aplicando', applied: 'Aplicado', failed: 'Fallido', legacy_failed: 'Fallo histórico', superseded: 'Reemplazada' };
+// Una orden reemplazada queda fuera de la cola: no se reintenta ni se reintentará. El
+// motivo original se conserva, porque explica por qué nunca llegó al equipo.
+const fueraDeCola = 'Fuera de la cola: la dejó sin efecto una orden posterior del mismo departamento; no se reintentará.';
 const taskNames: Record<string, string> = { usage: 'Consumo', linked: 'Vinculación', network: 'Red', overdue: 'Vencimientos', billing: 'Facturación', backups: 'Respaldos', sessions: 'Sesiones' };
 const taskLabel = (name: string) => taskNames[name] || (String(name).startsWith('router:') ? `Router ${String(name).slice(7)}` : name);
 
 function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={status === 'failed' ? 'outline-destructive' : 'outline'}>{networkLabels[status] || status}</Badge>;
+  return <Badge variant={status === 'failed' ? 'outline-destructive' : 'outline'}
+    className={status === 'superseded' ? 'border-dashed text-muted-foreground' : undefined}>{networkLabels[status] || status}</Badge>;
 }
 
 function OverviewView({ context, notice }: { context: OverviewContext; notice: string }) {
@@ -43,17 +47,22 @@ function NetworkView({ context, notice, setNotice }: { context: OverviewContext;
     catch (err) { setNotice(err instanceof Error ? err.message : 'No se pudo reintentar la orden.'); }
     finally { setRetrying(null); }
   }
-  return <PanelShell id="network-panel" tone="destructive" title="Control de acceso" description="Órdenes persistentes con reintento automático. Una orden fallida permanece visible." notice={notice}>
+  return <PanelShell id="network-panel" tone="destructive" title="Control de acceso" description="Órdenes persistentes con reintento automático. Una orden fallida permanece visible y se puede reintentar; una reemplazada queda fuera de la cola." notice={notice}>
     <DataTable
       headings={['Departamento', 'Orden', 'Resultado', 'Intentos', 'Próximo intento', 'Acción']}
       empty="Sin órdenes de acceso pendientes."
-      rows={context.commands.map(command => <TableRow key={command.id}>
+      rows={context.commands.map(command => <TableRow key={command.id} className={command.status === 'superseded' ? 'text-muted-foreground' : undefined}>
           <TableCell>{command.apartment}</TableCell>
           <TableCell>{command.action === 'activate' ? 'Activar' : 'Suspender'}</TableCell>
-          <TableCell><StatusBadge status={command.status} />{command.last_error && <small className="mt-1 block text-muted-foreground">{command.last_error}</small>}</TableCell>
+          <TableCell>
+            <StatusBadge status={command.status} />
+            {command.status === 'superseded'
+              ? <small className="mt-1 block">{fueraDeCola}{command.last_error ? ` Motivo original: ${command.last_error}` : ''}</small>
+              : command.last_error && <small className="mt-1 block text-muted-foreground">{command.last_error}</small>}
+          </TableCell>
           <TableCell>{command.attempts}</TableCell>
           <TableCell>{['failed', 'pending'].includes(command.status) ? context.date(command.next_attempt || '') : '—'}</TableCell>
-          <TableCell>{command.status === 'failed' && context.superadmin ? <Button type="button" variant="outline" size="icon-sm" title="Reintentar" aria-label={`Reintentar orden de ${command.apartment}`} disabled={retrying !== null} onClick={() => { void retry(command.id); }}><RotateCcw aria-hidden="true" /></Button> : null}</TableCell>
+          <TableCell>{command.status === 'failed' && context.superadmin ? <IconButton label={`Reintentar orden de ${command.apartment}`} tip="Reintentar" type="button" variant="outline" size="icon-sm" disabled={retrying !== null} onClick={() => { void retry(command.id); }}><RotateCcw aria-hidden="true" /></IconButton> : <span className="text-muted-foreground">—</span>}</TableCell>
         </TableRow>)} />
   </PanelShell>;
 }

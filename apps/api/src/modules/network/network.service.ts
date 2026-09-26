@@ -14,6 +14,11 @@ import type { BuildingCentralDto } from '../buildings/buildings.dto';
 /**
  * Cola de red y bloqueos operativos. Única responsabilidad: encolar,
  * procesar y reintentar órdenes contra el equipo central.
+ *
+ * Estado del departamento (`customers.network_state`): `no_ip` cuando no hay IP privada
+ * ni equipos vinculados —nada que aplicar, no un fallo—, `pending`/`applied` según la
+ * cola y `failed` cuando un intento real no llegó al equipo (red, edificio inactivo o
+ * falta de equipo central).
  */
 @Injectable()
 export class NetworkService {
@@ -32,18 +37,28 @@ export class NetworkService {
       ).length,
     );
     const payload: NetworkJob = { grouped, routerId, ip: customer.ip, status: customer.status, down: customer.down ?? 0, up: customer.up ?? 0, previous };
+    // Sin IP privada (ni equipos vinculados) esta red no se puede tocar: el departamento
+    // tiene su propio estado en vez de quedarse como un fallo de red que nunca ocurrió.
+    const sinIp = !payload.ip && !grouped;
+    // Una orden nueva deja sin efecto las que nunca llegaron a aplicarse (sin equipo
+    // central asignado o sin IP): la más antigua del departamento bloqueaba a las
+    // posteriores, así que su reintento eterno impedía que la orden vigente llegara
+    // al equipo. Así se registran una sola vez, como reemplazadas.
+    await tx`UPDATE commands SET status='superseded' WHERE customer_id=${customer.id} AND status='failed'
+      AND COALESCE((payload::jsonb->>'grouped')::boolean,false)=false
+      AND ((payload::jsonb->>'routerId') IS NULL OR (payload::jsonb->>'ip') IS NULL)`;
     const canEnforce = Boolean((payload.routerId && (payload.ip || grouped)) || previous || grouped);
     if (!canEnforce) {
       const missing = !payload.routerId
         ? 'El edificio no tiene equipo central asignado. Asigna un MikroTik central antes de operar la red.'
         : 'El departamento no tiene IP privada. Asigna una IP antes de operar la red.';
       await tx`INSERT INTO commands(id,customer_id,action,status,payload,next_attempt,last_error) VALUES (${uuidv7()},${customer.id},${customer.status === 'active' ? 'activate' : 'suspend'},'failed',${JSON.stringify(payload)},${now()},${missing})`;
-      await tx`UPDATE customers SET network_state='failed',network_checked_at=${now()} WHERE id=${customer.id}`;
+      await tx`UPDATE customers SET network_state=${sinIp ? 'no_ip' : 'failed'},network_checked_at=${now()} WHERE id=${customer.id}`;
       return;
     }
     const status = 'pending';
     await tx`INSERT INTO commands(id,customer_id,action,status,payload,next_attempt) VALUES (${uuidv7()},${customer.id},${customer.status === 'active' ? 'activate' : 'suspend'},${status},${JSON.stringify(payload)},${now()})`;
-    await tx`UPDATE customers SET network_state=${status},network_checked_at=NULL WHERE id=${customer.id}`;
+    await tx`UPDATE customers SET network_state=${sinIp ? 'no_ip' : status},network_checked_at=NULL WHERE id=${customer.id}`;
   }
 
   async applyAccess(tx: TransactionSQL, customer: Customer, status: Customer['status'], reason: string, force = false): Promise<void> {
@@ -146,7 +161,7 @@ export class NetworkService {
             const retryAt = new Date(Date.now() + Math.min(900000, 30000 * 2 ** Math.min(Number(job.attempts), 5))).toISOString();
             await this.database.write(async (tx) => {
               await tx`UPDATE commands SET status='failed',mode='mikrotik-failed',next_attempt=${retryAt},last_error=${diagnostic} WHERE id=${job.id}`;
-              await tx`UPDATE customers SET network_state='failed',network_checked_at=${now()} WHERE id=${job.customer_id} AND NOT EXISTS (SELECT 1 FROM commands WHERE customer_id=${job.customer_id} AND id>${job.id})`;
+              await tx`UPDATE customers SET network_state=${!payload.ip && !payload.grouped ? 'no_ip' : 'failed'},network_checked_at=${now()} WHERE id=${job.customer_id} AND NOT EXISTS (SELECT 1 FROM commands WHERE customer_id=${job.customer_id} AND id>${job.id})`;
               const owner = await this.scope.customer(tx, job.customer_id);
               if (Number(job.attempts) === 0) await this.scope.log(tx, `Orden #${job.id}: sin aplicar; ${diagnostic}`, owner.building_id);
             });
@@ -197,11 +212,15 @@ export class NetworkService {
       if (router.building_id !== null) throw new BadRequestException('El router pertenece a otro edificio.');
       await tx`UPDATE routers SET building_id=${dto.building_id} WHERE id=${dto.central_router_id}`;
     }
-    if ((await tx`SELECT q.id FROM commands q JOIN customers c ON c.id=q.customer_id WHERE c.building_id=${dto.building_id} AND q.status IN ('pending','failed','running') LIMIT 1`).length) {
-      throw new BadRequestException('Resuelve las órdenes pendientes antes de cambiar el equipo central.');
-    }
     const [prev] = await tx`SELECT central_router_id FROM buildings WHERE id=${dto.building_id}`;
     if ((prev?.central_router_id || null) === (dto.central_router_id || null)) return;
+    // El bloqueo protege un cambio de equipo: sin central previo, las órdenes en
+    // conflicto son las que fallaron por esa misma ausencia y esta asignación es lo
+    // que las desbloquea. Exigir resolverlas antes dejaría al edificio sin forma de
+    // recibir su primer equipo central.
+    if (prev?.central_router_id && (await tx`SELECT q.id FROM commands q JOIN customers c ON c.id=q.customer_id WHERE c.building_id=${dto.building_id} AND q.status IN ('pending','failed','running') LIMIT 1`).length) {
+      throw new BadRequestException('Resuelve las órdenes pendientes antes de cambiar el equipo central.');
+    }
     await tx`UPDATE buildings SET central_router_id=${dto.central_router_id || null} WHERE id=${dto.building_id}`;
     const customers = await tx`SELECT id FROM customers WHERE building_id=${dto.building_id} AND ip IS NOT NULL`;
     for (const row of customers) {

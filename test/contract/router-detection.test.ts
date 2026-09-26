@@ -37,9 +37,11 @@ test('automatic connection detects supported interfaces and never saves failed d
     selected = 'unsupported';
     await assert.rejects(registry.detect('192.168.99.1', credentials), error => !error.message.includes(credentials.password));
     const db = { read: async () => [] };
-    const service = new RoutersService(db, registry, {});
+    // La fachada delega el alta en su servicio CRUD: se inyecta para observar el
+    // guardado sin tocar la base ni el cofre de credenciales.
     let saved = 0;
-    service.save = async (dto, id, actual) => { saved++; assert.equal(dto.host, '192.168.99.1'); assert.equal(actual, snapshot); return { routers: [] }; };
+    const crud = { save: async (dto, id, actual) => { saved++; assert.equal(dto.host, '192.168.99.1'); assert.equal(actual, snapshot); return { routers: [] }; } };
+    const service = new RoutersService(db, registry, { seal: () => 'sealed-fixture', open: () => credentials }, undefined, crud);
     await assert.rejects(service.connect({ host: '192.168.99.1', ...credentials }));
     assert.equal(saved, 0);
     selected = 'arris-touchstone';

@@ -1,9 +1,16 @@
+// Cada prueba migra un esquema entero desde cero, algunas dos veces: declaran su propio
+// tope porque el límite por defecto de bun (5 s) no alcanza con la máquina cargada.
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { createTestSchema } from '../fixtures/postgres-fixture';
 import { connectPostgres } from '../../apps/api/dist/database/postgres-config.js';
 import { uuidv7 } from '../../apps/api/dist/common/uuid.js';
 import { DatabaseService } from '../../apps/api/dist/database/database.service.js';
+import { MIGRATIONS } from '../../apps/api/dist/database/migrations/index.js';
+
+// El ledger esperado sale del registro de migraciones: una migración nueva debe
+// aparecer aplicada aquí sin tocar la prueba, y ninguna debe repetirse.
+const versionesRegistradas = MIGRATIONS.map(migracion => migracion.version).sort((a, b) => a - b);
 
 // Forma de las tablas antes de la migración 27: sin columna id y con la clave natural como primaria.
 const tablasDeClaveNatural = [
@@ -46,7 +53,7 @@ test('pruebas aisladas en esquemas de nuwenet, sin crear bases ni resolver tabla
     }
     await observer.close();
   }
-});
+}, 60000);
 
 test('dos instancias arrancan a la vez sobre el mismo esquema sin duplicar versiones', async () => {
   const fixture = await createTestSchema();
@@ -55,7 +62,7 @@ test('dos instancias arrancan a la vez sobre el mismo esquema sin duplicar versi
   try {
     await Promise.all([first.onModuleInit(), second.onModuleInit()]);
     const versions = await first.read(tx => tx`SELECT version FROM schema_migrations ORDER BY version`);
-    assert.deepEqual(versions.map(row => row.version), Array.from({ length: 28 }, (_, index) => index + 1));
+    assert.deepEqual(versions.map(row => row.version), versionesRegistradas);
     const [ledger] = await first.read(tx => tx.unsafe(`SELECT a.attname FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=ANY(i.indkey) WHERE i.indisprimary AND c.oid='schema_migrations'::regclass`));
     assert.equal(ledger.attname, 'id');
   } finally {
@@ -63,7 +70,7 @@ test('dos instancias arrancan a la vez sobre el mismo esquema sin duplicar versi
     await second.onModuleDestroy();
     await fixture.close();
   }
-});
+}, 60000);
 
 test('la migración 27 convierte un esquema anterior con datos: añade id UUID v7 y conserva filas y claves naturales', async () => {
   const fixture = await createTestSchema();
@@ -124,13 +131,13 @@ test('la migración 27 convierte un esquema anterior con datos: añade id UUID v
     const [dueno] = await reiniciado.read(tx => tx`SELECT id FROM plans WHERE name='Anterior'`);
     assert.equal(dueno.id, plan);
     const versiones = await reiniciado.read(tx => tx`SELECT version FROM schema_migrations ORDER BY version`);
-    assert.deepEqual(versiones.map(row => row.version), Array.from({ length: 28 }, (_, index) => index + 1));
+    assert.deepEqual(versiones.map(row => row.version), versionesRegistradas);
   } finally {
     await legacy?.close();
     await db?.onModuleDestroy();
     await fixture.close();
   }
-});
+}, 60000);
 
 test('la migración 28 retira las tablas heredadas conservando sus filas en retired_rows', async () => {
   const fixture = await createTestSchema();
@@ -182,13 +189,57 @@ test('la migración 28 retira las tablas heredadas conservando sus filas en reti
     db = new DatabaseService();
     await db.onModuleInit();
     assert.equal((await db.read(tx => tx`SELECT COUNT(*)::int total FROM retired_rows`))[0].total, 4);
-    assert.deepEqual((await db.read(tx => tx`SELECT version FROM schema_migrations ORDER BY version`)).map(fila => fila.version), Array.from({ length: 28 }, (_, index) => index + 1));
+    assert.deepEqual((await db.read(tx => tx`SELECT version FROM schema_migrations ORDER BY version`)).map(fila => fila.version), versionesRegistradas);
   } finally {
     await legacy?.close();
     await db?.onModuleDestroy();
     await fixture.close();
   }
-});
+}, 60000);
+
+test('la migración 31 da estado propio a los departamentos sin IP', async () => {
+  const fixture = await createTestSchema();
+  let db = new DatabaseService();
+  let legacy;
+  try {
+    await db.onModuleInit();
+    const [edificio] = await db.read(tx => tx`SELECT id FROM buildings ORDER BY id`);
+    const plan = uuidv7(), router = uuidv7(), ahora = new Date().toISOString();
+    const sinIp = uuidv7(), conEquipos = uuidv7(), conIp = uuidv7();
+    legacy = fixture.connect();
+    await legacy`INSERT INTO plans(id,name,down,up,price,building_id) VALUES (${plan},'Sin IP 31',10,5,100,${edificio.id})`;
+    // Una base anterior daba por fallidos los departamentos que no tienen IP.
+    await legacy`INSERT INTO customers(id,apartment,name,phone,plan_id,ip,building_id,network_state) VALUES (${sinIp},'31-01','Sin IP','',${plan},NULL,${edificio.id},'failed')`;
+    await legacy`INSERT INTO customers(id,apartment,name,phone,plan_id,ip,building_id,network_state) VALUES (${conEquipos},'31-02','Con equipos','',${plan},NULL,${edificio.id},'failed')`;
+    await legacy`INSERT INTO customers(id,apartment,name,phone,plan_id,ip,building_id,network_state) VALUES (${conIp},'31-03','Con IP','',${plan},'192.168.31.10',${edificio.id},'failed')`;
+    // Los equipos vinculados sí se pueden operar sin IP propia: ese estado es real.
+    await legacy`INSERT INTO routers(id,name,adapter,host,port,protocol,credentials,building_id) VALUES (${router},'Central 31','mikrotik-rest','192.168.31.1',443,'https','fixture',${edificio.id})`;
+    await legacy`INSERT INTO customer_devices(id,router_id,mac,customer_id,created_at) VALUES (${uuidv7()},${router},'AA:BB:CC:DD:EE:31',${conEquipos},${ahora})`;
+    // Vuelve al estado previo a la 31 y rearranca.
+    await legacy`DELETE FROM schema_migrations WHERE version=31`;
+    await legacy.close();
+    legacy = null;
+    await db.onModuleDestroy();
+    db = new DatabaseService();
+    await db.onModuleInit();
+    assert.deepEqual(
+      await db.read(tx => tx`SELECT apartment, network_state FROM customers WHERE apartment LIKE '31-%' ORDER BY apartment`),
+      [
+        { apartment: '31-01', network_state: 'no_ip' },
+        { apartment: '31-02', network_state: 'failed' },
+        { apartment: '31-03', network_state: 'failed' },
+      ],
+    );
+    // Y un alta que no declara estado nace sin IP, no fallida.
+    const nueva = uuidv7();
+    await db.write(tx => tx`INSERT INTO customers(id,apartment,name,phone,plan_id,ip,building_id) VALUES (${nueva},'31-04','Nueva','',${plan},NULL,${edificio.id})`);
+    assert.equal((await db.read(tx => tx`SELECT network_state FROM customers WHERE id=${nueva}`))[0].network_state, 'no_ip', 'el default del esquema acompaña al alta sin IP');
+  } finally {
+    await legacy?.close();
+    await db?.onModuleDestroy();
+    await fixture.close();
+  }
+}, 60000);
 
 test('dos instancias retiran las tablas heredadas a la vez sin duplicar el archivo', async () => {
   const fixture = await createTestSchema();
@@ -215,11 +266,11 @@ test('dos instancias retiran las tablas heredadas a la vez sin duplicar el archi
     const restantes = await second.read(tx => tx.unsafe(`SELECT table_name FROM information_schema.tables WHERE table_schema=current_schema() AND table_name IN ('notifications','whatsapp_receipts')`));
     assert.deepEqual(restantes, []);
     const [ledger] = await first.read(tx => tx`SELECT COUNT(*)::int total, COUNT(DISTINCT version)::int distintas FROM schema_migrations`);
-    assert.deepEqual(ledger, { total: 28, distintas: 28 });
+    assert.deepEqual(ledger, { total: versionesRegistradas.length, distintas: versionesRegistradas.length });
   } finally {
     await first?.onModuleDestroy();
     await second?.onModuleDestroy();
     await db?.onModuleDestroy();
     await fixture.close();
   }
-});
+}, 60000);

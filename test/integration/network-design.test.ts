@@ -61,11 +61,11 @@ test('network design: isolation, topology, unsupported configuration, stale revi
       assert.equal((await service.get(building.id)).building.central_router_id, null);
       stored = await service.save(building.id, { ...design, revision: stored.revision });
       review = await service.review(building.id);
-      const original = service.management.setBuildingCentralInTransaction.bind(service.management);
-      service.management.setBuildingCentralInTransaction = async (tx, dto) => { await original(tx, dto); throw Error('rollback-fixture'); };
+      const original = service.network.setBuildingCentralInTransaction.bind(service.network);
+      service.network.setBuildingCentralInTransaction = async (tx, dto) => { await original(tx, dto); throw Error('rollback-fixture'); };
       await assert.rejects(() => service.apply(building.id, review), /rollback-fixture/);
       assert.equal((await service.get(building.id)).building.central_router_id, null);
-      service.management.setBuildingCentralInTransaction = original;
+      service.network.setBuildingCentralInTransaction = original;
       await service.apply(building.id, review);
       const result = await service.get(building.id);
       assert.equal(result.building.central_router_id, router.id);
@@ -75,12 +75,12 @@ test('network design: isolation, topology, unsupported configuration, stale revi
       // Adopción: un router sin edificio queda asignado al volverse central.
       const [pool] = await db.write(tx => tx`INSERT INTO routers(id,name,adapter,host,port,protocol,credentials,building_id,status) VALUES (${uuidv7()},'Pool','mikrotik-rest','192.168.9.9',443,'https','never-exposed',NULL,'connected') RETURNING id`);
       await assert.rejects(() => connections.linkDevice(pool.id, { mac: 'AA:BB:CC:DD:EE:FF' }), /edificio/);
-      await db.write(tx => service.management.setBuildingCentralInTransaction(tx, { building_id: other.id, central_router_id: pool.id }));
+      await db.write(tx => service.network.setBuildingCentralInTransaction(tx, { building_id: other.id, central_router_id: pool.id }));
       const [adopted] = await db.read(tx => tx`SELECT building_id FROM routers WHERE id=${pool.id}`);
       assert.equal(adopted.building_id, other.id);
       const [adoptedBuilding] = await db.read(tx => tx`SELECT central_router_id FROM buildings WHERE id=${other.id}`);
       assert.equal(adoptedBuilding.central_router_id, pool.id);
-      await assert.rejects(() => db.write(tx => service.management.setBuildingCentralInTransaction(tx, { building_id: other.id, central_router_id: router.id })), /otro edificio/);
+      await assert.rejects(() => db.write(tx => service.network.setBuildingCentralInTransaction(tx, { building_id: other.id, central_router_id: router.id })), /otro edificio/);
     });
   } finally { await db.onModuleDestroy(); await pg.close(); }
 });

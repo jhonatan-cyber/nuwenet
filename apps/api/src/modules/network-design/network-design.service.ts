@@ -119,7 +119,9 @@ export class NetworkDesignService {
       if (service.ssid || service.wifi_password) blocked.push(`Departamento ${customer?.apartment}: el adaptador no permite configurar Wi-Fi.`);
     }
     const jobs = await tx`SELECT q.id FROM commands q JOIN customers c ON c.id=q.customer_id WHERE c.building_id=${id} AND q.status IN ('pending','failed','running') ORDER BY q.id`;
-    if (centralRouter && centralRouter.id !== data.building.central_router_id && jobs.length) blocked.push('Resuelve las órdenes de red pendientes antes de cambiar el equipo central.');
+    // Sin central previo no hay nada que interrumpir: las órdenes en fallo esperan
+    // justamente esta selección (misma regla que en NetworkService).
+    if (data.building.central_router_id && centralRouter && centralRouter.id !== data.building.central_router_id && jobs.length) blocked.push('Resuelve las órdenes de red pendientes antes de cambiar el equipo central.');
     const fingerprint = createHash('sha256').update(JSON.stringify({ revision: data.revision, design, equipment: data.equipment, customers: data.customers, central: data.building.central_router_id, jobs })).digest('hex');
     const steps = [
       'Publicar la topología del edificio. Los puertos indicados documentan el cableado; no cambian su configuración (se gestionan desde la ficha de cada equipo MikroTik).',

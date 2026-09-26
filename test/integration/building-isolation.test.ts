@@ -15,6 +15,27 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
   const port=44000+Math.floor(Math.random()*5000), origin=`http://127.0.0.1:${port}`;
   const server=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,SETUP_TOKEN:'',DB_DRIVER:'postgres',HOST:'127.0.0.1',PORT:String(port),DATA_DIR:directory,BACKUP_DIR:path.join(directory,'backups')},stdio:['ignore','pipe','pipe'],windowsHide:true});
   let cookie='', browser;
+  // El planificador sincroniza la red cada 10 s en segundo plano; mientras corre, la
+  // API pide esperar (409 "sincronización de red") en las vinculaciones de dispositivos.
+  // Se reintenta lo mismo que haría el panel, en vez de fallar por esa carrera.
+  async function apiSinSyncEnCurso(route,body,status=200){
+    for(let intento=1;;intento++){
+      try{return await api(route,body,status);}
+      catch(error){
+        if(intento>=30||!/sincronización de red/.test(String(error?.message)))throw error;
+        await new Promise(resolve=>setTimeout(resolve,1000));
+      }
+    }
+  }
+  // La interfaz no puede reintentar sola: antes de su paso por el navegador se espera
+  // a que la sincronización de fondo no deje órdenes en curso en ese edificio.
+  async function esperarSyncQuieta(building){
+    for(let intento=0;intento<40;intento++){
+      const estado=await api(`state?building_id=${building}`);
+      if(!(estado.commands||[]).some(orden=>['pending','running'].includes(orden.status)))return;
+      await new Promise(resolve=>setTimeout(resolve,500));
+    }
+  }
   async function api(route,body,status=200){
     const response=await fetch(`${origin}/api/${route}`,{method:body===undefined?'GET':'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
     if(response.headers.get('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];
@@ -93,8 +114,9 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     const planA=(await api(`state?building_id=${a}`)).plans[0];
     await api('customers',{name:'Titular A',apartment:'A-101',plan_id:planA.id,building_id:a});
     const customerA=(await api(`state?building_id=${a}`)).customers[0];
-    await api(`routers/${routerB.id}/devices`,{mac,customer_id:customerA.id},400);
+    await apiSinSyncEnCurso(`routers/${routerB.id}/devices`,{mac,customer_id:customerA.id},400);
     await api('backups',undefined,403);
+    await esperarSyncQuieta(b);
     await page.locator('nav [data-page="routers"]').click();
     await page.getByRole('button',{name:`Ver router Router ${b}`,exact:true}).click();
     await page.getByRole('button',{name:'Vincular departamento'}).first().click();
@@ -106,7 +128,7 @@ test('edificios: acceso aislado, actividad privada y formularios en el edificio 
     try{await changedDb.unsafe("UPDATE routers SET snapshot=$1,status='error' WHERE id=$2",[JSON.stringify({manufacturer:'Fixture',model:'Fixture',firmware:'1',interfaces:[],notes:[],clients:[{mac,ip:'192.168.2.21'}]}),routerB.id]);}finally{await changedDb.close();}
     assert.equal((await api(`routers/${routerB.id}`)).router.devices[0].customer_id,stateB.customers[0].id);
     assert.equal((await api(`state?building_id=${b}`)).enforcement.state,'error');
-    await api(`routers/${routerB.id}/devices`,{mac,customer_id:null});
+    await apiSinSyncEnCurso(`routers/${routerB.id}/devices`,{mac,customer_id:null});
     assert.equal((await api(`routers/${routerB.id}`)).router.devices.length,0);
     // Mismo departamento en otro edificio: permitido y distinguible.
     await api('customers',{name:'Titular B',apartment:'A-101',building_id:b});

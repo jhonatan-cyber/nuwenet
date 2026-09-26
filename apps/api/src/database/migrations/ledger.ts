@@ -36,6 +36,40 @@ export async function applyMigrations(db: DatabaseService, migrations: Migration
   for (const migration of migrations) await once(db, migration.version, tx => migration.up(db, tx));
 }
 
+// Un grupo del registro: el archivo que declara las migraciones y sus entradas.
+export interface MigrationGroup {
+  source: string;
+  migrations: Migration[];
+}
+
+// Une los módulos del registro, ordena por versión y lo comprueba antes de usarlo.
+// El orden de aplicación es el numérico, nunca el del array: los módulos se agrupan
+// por asunto (no por número) y una migración nueva se anexa al final del que la posee.
+//
+// Falla con el motivo cuando una versión se repite, cuando un archivo la declara
+// fuera de secuencia o cuando la numeración deja huecos. Los tres casos significan lo
+// mismo en una base ya migrada: hay una migración que nunca va a correr.
+export function validateMigrations(groups: MigrationGroup[]): Migration[] {
+  const declaradas = new Map<number, string>();
+  const todas: Migration[] = [];
+  for (const { source, migrations } of groups) {
+    let anterior = 0;
+    for (const migration of migrations) {
+      if (migration.version <= anterior) throw new Error(`${source}: la migración ${migration.version} (${migration.name}) está fuera de secuencia; cada archivo se lee de menor a mayor y no admite versiones repetidas.`);
+      anterior = migration.version;
+      const dueno = declaradas.get(migration.version);
+      if (dueno) throw new Error(`La migración ${migration.version} está declarada dos veces (${dueno} y ${source}).`);
+      declaradas.set(migration.version, source);
+      todas.push(migration);
+    }
+  }
+  const ordenadas = [...todas].sort((a, b) => a.version - b.version);
+  for (const [indice, migration] of ordenadas.entries()) {
+    if (migration.version !== indice + 1) throw new Error(`El registro no es continuo: se esperaba la versión ${indice + 1} y viene la ${migration.version} (${migration.name}). Declara la que falta antes de añadir una nueva.`);
+  }
+  return ordenadas;
+}
+
 // Lectura sin efectos secundarios para informar del estado: devuelve null cuando
 // el ledger todavía no existe (no lo crea).
 export async function appliedVersions(db: DatabaseService): Promise<Set<number> | null> {

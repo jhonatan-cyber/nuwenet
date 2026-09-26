@@ -1,3 +1,6 @@
+// Los escenarios declaran su propio tope: llaman a pg_dump/pg_restore y a los guiones
+// de restauración, y el límite por defecto de bun (5 s) no alcanza con la máquina
+// cargada.
 import { createTestSchema } from '../fixtures/postgres-fixture';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
@@ -59,7 +62,7 @@ test('D1/D4: paquete cifrado ilegible sin clave, redondo verificado y restauraci
     process.env.ROUTER_ENCRYPTION_KEY = readFileSync(path.join(destination, 'router.key'), 'utf8');
     assert.equal(new CredentialVault().open(router.credentials).password, 'private-fixture');
   } finally { await connection.close(); }
-}));
+}), 60000);
 
 test('D4: clave incorrecta, ausente y paquete corrupto se rechazan con mensaje claro', () => fixture(async ({ db, service, directory }) => {
   const right = randomBytes(32).toString('base64');
@@ -76,7 +79,7 @@ test('D4: clave incorrecta, ausente y paquete corrupto se rechazan con mensaje c
   const enc = path.join(source, 'nuwenet.dump.enc');
   const data = readFileSync(enc); data[data.length - 20] ^= 0xff; writeFileSync(enc, data);
   await assert.rejects(() => verifyBackup(source), /integridad/);
-}));
+}), 60000);
 
 test('D4: formato heredado sin cifrar sigue verificándose y restaurándose', () => fixture(async ({ db, service, directory }) => {
   await seed(db, service);
@@ -88,7 +91,7 @@ test('D4: formato heredado sin cifrar sigue verificándose y restaurándose', ()
   const destination = path.join(directory, 'restored');
   const restore = spawnSync(process.execPath, ['tools/db/restore-backup.ts', source, destination], { encoding: 'utf8', windowsHide: true });
   assert.equal(restore.status, 0, restore.stderr);
-}));
+}), 60000);
 
 test('D3: copia externa de paquete cifrado se verifica en destino', () => fixture(async ({ db, service, directory }) => {
   process.env.BACKUP_ENCRYPTION_KEY = randomBytes(32).toString('base64');
@@ -98,4 +101,4 @@ test('D3: copia externa de paquete cifrado se verifica en destino', () => fixtur
   const backups = new BackupService(db), backup = await backups.create();
   assert.equal(backup.external_copied, true);
   await verifyBackup(path.join(external, backup.name));
-}));
+}), 60000);

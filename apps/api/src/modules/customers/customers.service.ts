@@ -39,7 +39,9 @@ export class CustomersService {
       const [existing] = await tx`SELECT id FROM customers WHERE apartment=${dto.apartment.trim()} AND building_id=${bid}`;
       if (existing) throw new BadRequestException('Ya existe ese departamento en el edificio.');
       // B5: el enlace completo se devuelve una sola vez; en la base solo el hash.
-      const [row] = await tx`INSERT INTO customers(id,apartment,name,phone,plan_id,ip,building_id,access_token,access_token_hash,access_issued_at,access_expires_at,access_version) VALUES (${uuidv7()},${dto.apartment.trim()},${(dto.name || '').trim()},${(dto.phone || '').trim()},${planId},${ip},${bid},${null},${this.hashPortalToken(portalToken)},${issued},${this.settings.portalExpiry(await this.settings.settings(tx))},1) RETURNING id`;
+      // Un alta sin IP no se puede operar en la red: nace en su propio estado, no en un
+      // fallo. Con IP, la cola que corre justo después fija el estado real.
+      const [row] = await tx`INSERT INTO customers(id,apartment,name,phone,plan_id,ip,building_id,network_state,network_checked_at,access_token,access_token_hash,access_issued_at,access_expires_at,access_version) VALUES (${uuidv7()},${dto.apartment.trim()},${(dto.name || '').trim()},${(dto.phone || '').trim()},${planId},${ip},${bid},${ip ? 'pending' : 'no_ip'},${null},${null},${this.hashPortalToken(portalToken)},${issued},${this.settings.portalExpiry(await this.settings.settings(tx))},1) RETURNING id`;
       if (ip) await this.network.queue(tx, await this.scope.customer(tx, row.id));
       await this.scope.log(tx, `Departamento ${dto.apartment.trim()} registrado.`, bid);
       return (row as unknown as { id: string }).id;

@@ -119,7 +119,9 @@ try {
   const payload = JSON.parse(orden[0].split('|')[0]);
   const [routerId] = await consultar('router', `SELECT id FROM routers WHERE name='Router heredado'`);
   comprobar(payload.routerId === routerId && payload.previous?.routerId === routerId, 'el routerId de la orden pendiente no se remapeó al UUID del router');
-  comprobar((await consultar('versiones', `SELECT count(*) FROM schema_migrations`))[0] === '28', 'el ledger no quedó en 28 versiones');
+  // El ledger esperado sale del registro de migraciones, no de un número fijo.
+  const { MIGRATIONS } = await import(pathToFileURL(path.join(dist, 'database/migrations/index.js')).href);
+  comprobar((await consultar('versiones', `SELECT count(*) FROM schema_migrations`))[0] === String(MIGRATIONS.length), `el ledger no quedó en ${MIGRATIONS.length} versiones`);
 
   // 5. Segundo arranque: la base ya convertida no debe volver a migrar ni romperse.
   await actual.onModuleDestroy();

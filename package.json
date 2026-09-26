@@ -21,7 +21,7 @@
     "test:postgres": "bun run build && bun test ./test/integration/postgres.test.ts",
     "test:ui": "bun run build && bun tools/e2e/smoke-ui.ts",
     "test:dialogs": "bun run build && bun tools/e2e/verify-dialogs.ts",
-    "verify": "bun run check && bun run test && bun tools/e2e/smoke-ui.ts"
+    "verify": "bun tools/verify.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

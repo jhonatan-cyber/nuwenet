@@ -1,3 +1,6 @@
+// Cada prueba declara su propio tope: migran un esquema entero desde cero y dos de
+// ellas arrancan el CLI o un servidor, así que el límite por defecto de bun (5 s) no
+// alcanza con la máquina cargada.
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,6 +13,7 @@ import path from 'node:path';
 import { createTestSchema } from '../fixtures/postgres-fixture';
 import { uuidv7 } from '../../apps/api/dist/common/uuid.js';
 import { DatabaseService } from '../../apps/api/dist/database/database.service.js';
+import { MIGRATIONS } from '../../apps/api/dist/database/migrations/index.js';
 import { RetiredRowsService } from '../../apps/api/dist/management/retired-rows.service.js';
 
 const raiz = path.resolve(import.meta.dirname, '../..');
@@ -81,13 +85,13 @@ test('el archivo heredado se consulta y se exporta sin escribir nada', async () 
 
     // Solo lectura: nada cambió en el archivo ni en el ledger.
     assert.equal((await db.read(tx => tx`SELECT COUNT(*)::int total FROM retired_rows`))[0].total, 4);
-    assert.equal((await db.read(tx => tx`SELECT COUNT(*)::int total FROM schema_migrations`))[0].total, 28);
+    assert.equal((await db.read(tx => tx`SELECT COUNT(*)::int total FROM schema_migrations`))[0].total, MIGRATIONS.length);
   } finally {
     await sql?.close();
     await db?.onModuleDestroy();
     await fixture.close();
   }
-});
+}, 60000);
 
 test('sin archivo (esquema anterior a la 28) el servicio avisa en vez de fallar', async () => {
   const fixture = await createTestSchema();
@@ -106,7 +110,7 @@ test('sin archivo (esquema anterior a la 28) el servicio avisa en vez de fallar'
     await db?.onModuleDestroy();
     await fixture.close();
   }
-});
+}, 60000);
 
 test('db:archive lista, consulta y exporta a archivo por el CLI', async () => {
   const fixture = await createTestSchema();
@@ -154,7 +158,7 @@ test('db:archive lista, consulta y exporta a archivo por el CLI', async () => {
     await fixture.close();
     rmSync(directorio, { recursive: true, force: true });
   }
-});
+}, 60000);
 
 test('el endpoint del archivo exige super-admin, pagina y descarga el CSV', async () => {
   const sonda = createServer();
@@ -218,4 +222,4 @@ test('el endpoint del archivo exige super-admin, pagina y descarga el CSV', asyn
     await fixture.close();
     rmSync(directorio, { recursive: true, force: true });
   }
-});
+}, 60000);

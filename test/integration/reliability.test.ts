@@ -1,3 +1,6 @@
+// Las pruebas que respaldan y restauran declaran su propio tope: llaman a
+// pg_dump/pg_restore y el límite por defecto de bun (5 s) no alcanza con la máquina
+// cargada. Las demás corren en memoria y usan el suyo.
 import { createTestSchema } from '../fixtures/postgres-fixture';
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
@@ -168,7 +171,7 @@ test('respaldo en línea con clave y restauración a directorio nuevo',()=>fixtu
   assert.equal(restore.status,0,restore.stderr);assert.equal((await verifyBackup(destination)).driver,'postgres');
   const second=spawnSync(process.execPath,['tools/db/restore-backup.ts',source,destination],{encoding:'utf8',windowsHide:true});assert.notEqual(second.status,0);
   writeFileSync(path.join(source,backup.encrypted?'router.key.enc':'router.key'),'corrupt');await assert.rejects(()=>backups.verify(backup.name),/verificación/);
-}));
+}), 60000);
 
 test('respaldos: retención protegida y copia externa verificada',()=>fixture(async({db,directory})=>{
   const keys=['BACKUP_RETENTION_DAYS','BACKUP_KEEP_MIN','BACKUP_EXTERNAL_DIR'],previous=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
@@ -182,7 +185,7 @@ test('respaldos: retención protegida y copia externa verificada',()=>fixture(as
     process.env.BACKUP_EXTERNAL_DIR=path.join(directory,'missing-volume');await assert.rejects(()=>service.create(),/externa/);
     assert.ok(existsSync(path.join(directory,'backups',second.name)),'Una copia externa fallida conserva los respaldos locales');
   }finally{for(const[k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
-}));
+}), 60000);
 
 test('automatización persistente: cobros, gracia, monitoreo y respaldos sin duplicados',()=>fixture(async({db,auth,service,routers})=>{
   let backupCount=0,checks=0;

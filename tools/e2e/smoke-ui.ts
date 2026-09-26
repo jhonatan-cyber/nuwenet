@@ -444,6 +444,9 @@ try {
   await page.getByLabel('IP privada',{exact:true}).fill('');
   await page.getByRole('dialog').getByRole('button',{name:'Guardar',exact:true}).click();
   await page.getByText('Sin IP',{exact:true}).waitFor();
+  // Un departamento sin IP privada tiene su propio estado: no se lee como fallo de red.
+  await page.getByText('Sin IP privada',{exact:true}).waitFor();
+  assert.equal((await (await page.request.get(`http://127.0.0.1:${port}/api/state`)).json()).customers[0].network_state,'no_ip','El alta sin IP no se lee como fallo de red');
   await page.getByRole('button',{name:'Portal del residente',exact:true}).click();
   await page.getByRole('button',{name:'Generar y entregar enlace',exact:true}).click();
   let rotations=0,releaseRotation;
@@ -506,9 +509,55 @@ try {
     }
   }
   await resident.close();
+  // Órdenes reemplazadas: un departamento que venía fallando por falta de IP no conserva
+  // esa orden en la cola cuando por fin se le asigna una. La prueba bloquea HTTP saliente,
+  // así que el edificio se deshabilita antes de asignar la IP: con el edificio inactivo la
+  // cola diagnostica sin llegar a contactar a un equipo real.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const apiGet = async (route) => (await page.request.get(`http://127.0.0.1:${port}/api/${route}`)).json();
+  const post = async (route, data) => {
+    const response = await page.request.post(`http://127.0.0.1:${port}/api/${route}`, { data });
+    const text = await response.text();
+    assert.equal(response.status(), 200, `${route} respondió ${response.status()} ${text}`);
+    return text ? JSON.parse(text) : {};
+  };
+  const building = (await apiGet('state')).enforcement.buildings[0].building_id;
+  await post('routers', { name:'Central de la prueba', adapter:'mikrotik-rest', host:'192.168.100.1', port:443, protocol:'https', username:'fixture-user', password:'fixture-secret' });
+  const central = (await apiGet('state')).routers.find(router => router.name === 'Central de la prueba').id;
+  await post('buildings/central', { building_id: building, central_router_id: central });
+  // Cambiar de plan encola una orden que no puede aplicarse porque el departamento quedó sin
+  // IP: falla con ese motivo, tal como lo muestra Control de acceso.
+  await post('plans', { name:'Hogar básico', down:20, up:5, price:90 });
+  const basicPlan = (await apiGet('state')).plans.find(plan => plan.name === 'Hogar básico').id;
+  await page.reload();
+  await page.locator('nav [data-page="customers"]').click();
+  await page.getByRole('button',{name:'Editar 201',exact:true}).click();
+  await page.getByLabel('Plan de internet (opcional)').selectOption(String(basicPlan));
+  await customerDialog.getByRole('button',{name:'Guardar',exact:true}).click();
+  await customerForm.waitFor({state:'hidden'});
+  await post('buildings/toggle', { building_id: building, disabled: true });
+  // Asignar la IP desde el panel es lo que deja esa orden fuera de la cola.
+  await page.getByRole('button',{name:'Cambiar IP',exact:true}).click();
+  await page.getByLabel('IP privada',{exact:true}).fill('192.168.88.60');
+  await page.getByRole('dialog').getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.getByText('192.168.88.60',{exact:true}).waitFor();
+  await page.locator('nav [data-page="network"]').click();
+  await page.getByRole('heading',{name:'Control de acceso',exact:true}).waitFor();
+  const reemplazada = page.getByRole('row').filter({hasText:'Reemplazada'}).filter({hasText:'no tiene IP privada'});
+  await reemplazada.waitFor();
+  assert.equal(await reemplazada.count(),1,'Una sola orden reemplazada por falta de IP');
+  const filaReemplazada = await reemplazada.innerText();
+  assert.match(filaReemplazada,/201/);
+  assert.match(filaReemplazada,/Fuera de la cola/,'La orden reemplazada explica por qué salió de la cola');
+  assert.match(filaReemplazada,/—/,'Una orden reemplazada no tiene próximo intento');
+  assert.equal(await reemplazada.getByRole('button',{name:/^Reintentar/}).count(),0,'Una orden reemplazada no se reintenta');
+  const ordenes = (await apiGet('state?section=network')).commands.filter(command => command.apartment === '201');
+  assert.equal(ordenes.filter(command => command.status !== 'superseded').length,1,'Queda una sola orden vigente para el departamento');
+  assert.equal(ordenes.filter(command => command.status === 'superseded' && /no tiene IP privada/i.test(command.last_error)).length,1,'La orden reemplazada conserva el motivo en la base');
+  await page.screenshot({path:path.join(tmpdir(),'nuwenet-network-orders.png'),fullPage:true});
   assert.deepEqual(errors, [], 'Sin errores de JavaScript en el navegador');
   assert.ok(!serverErrors.includes('UI_TEST_OUTBOUND_HTTP_BLOCKED'), 'El recorrido no debe intentar contactar integraciones HTTP');
-  console.log('Interfaz verificada: setup y selector de tema, altas, edición, desactivación/activación, cobros, recibos, reversión, configuración, usuarios, respaldos, auditoría, cuenta shadcn, planes y departamentos en tabla (menú de acciones, validaciones, reintento, envío único, búsqueda persistente, precio histórico/futuro y velocidades), equipos de red (4 adaptadores, nivel de administración) y asistente de red del edificio.');
+  console.log('Interfaz verificada: setup y selector de tema, altas, edición, desactivación/activación, cobros, recibos, reversión, configuración, usuarios, respaldos, auditoría, cuenta shadcn, planes y departamentos en tabla (menú de acciones, validaciones, reintento, envío único, búsqueda persistente, precio histórico/futuro y velocidades), equipos de red (4 adaptadores, nivel de administración), asistente de red del edificio y órdenes de acceso (una reemplazada por falta de IP y una fallida se distinguen).');
 } catch(error) {
   const page=browser?.contexts()[0]?.pages()[0];
   if(page){
